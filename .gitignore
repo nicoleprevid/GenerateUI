@@ -1,0 +1,15 @@
+# Ignora todos os arquivos temporários
+*.tmp
+
+# Ignora 
+build/
+dist/
+node_modules/
+.env
+dist/
+
+# Ignora arquivos de configuração específicos
+config.json
+
+# Não ignora arquivos .md mesmo com um padrão amplo
+!README.md
