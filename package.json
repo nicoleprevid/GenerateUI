@@ -1,0 +1,35 @@
+{
+  "name": "generate-ui",
+  "version": "1.0.0",
+  "description": "Generate Angular admin screens from OpenAPI + UI JSON.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nicoleprevid/GenerateUI.git"
+  },
+  "bin": {
+    "generate-ui": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts"
+  },
+  "license": "MIT",
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/nicoleprevid/GenerateUI/issues"
+  },
+  "homepage": "https://github.com/nicoleprevid/GenerateUI#readme",
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "commander": "^14.0.2",
+    "handlebars": "^4.7.8",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
