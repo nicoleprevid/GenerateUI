@@ -1,23 +1,21 @@
 #!/usr/bin/env node
+import { Command } from 'commander'
+import { generate } from './commands/generate'
 
-import { Command } from 'commander';
-
-const program = new Command();
+const program = new Command()
 
 program
   .name('generate-ui')
-  .description('Generate Angular UI from OpenAPI + UI metadata')
-  .version('0.0.1');
+  .description('Generate UI forms from OpenAPI')
+  .version('1.0.0')
 
 program
   .command('generate')
-  .description('Generate UI')
   .requiredOption('-o, --openapi <path>', 'OpenAPI file')
-  .requiredOption('-u, --ui <path>', 'UI config file')
-  .requiredOption('-d, --output <path>', 'Output directory')
-  .action((options) => {
-    console.log('Generate called with:', options);
-  });
+  .action(async (options: { openapi: string }) => {
+    await generate({
+      openapi: options.openapi
+    })
+  })
 
-
-program.parse();
+program.parse()
