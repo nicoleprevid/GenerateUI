@@ -1,23 +1,57 @@
 import fs from 'fs'
 import path from 'path'
 import { loadOpenApi } from '../openapi/load-openapi'
-import { generateForm } from '../generators/form.generator'
-import { syncOverlay } from '../overlay/sync-overlay'
+import { generateScreen } from '../generators/screen.generator'
+
+interface GeneratedRoute {
+  path: string
+  operationId: string
+}
 
 export async function generate(options: { openapi: string }) {
+  /**
+   * Caminho absoluto do OpenAPI (YAML)
+   * Ex: /Users/.../generateui-playground/realWorldOpenApi.yaml
+   */
   const openApiPath = path.resolve(process.cwd(), options.openapi)
+
+  /**
+   * Raiz do playground (onde está o YAML)
+   */
   const projectRoot = path.dirname(openApiPath)
 
-  const generateUiRoot = path.join(projectRoot, 'generate-ui')
+  /**
+   * Onde o Angular consome os arquivos
+   */
+  const generateUiRoot = path.join(
+    projectRoot,
+    'frontend',
+    'src',
+    'app',
+    'assets',
+    'generate-ui'
+  )
+
   const generatedDir = path.join(generateUiRoot, 'generated')
   const overlaysDir = path.join(generateUiRoot, 'overlays')
 
   fs.mkdirSync(generatedDir, { recursive: true })
   fs.mkdirSync(overlaysDir, { recursive: true })
 
+  /**
+   * Lista de rotas geradas automaticamente
+   */
+  const routes: GeneratedRoute[] = []
+
+  /**
+   * Parse do OpenAPI (já com $refs resolvidos)
+   */
   const api = await loadOpenApi(openApiPath)
   const paths = api.paths ?? {}
 
+  /**
+   * Itera por todos os endpoints
+   */
   for (const [pathKey, pathItem] of Object.entries(paths)) {
     for (const [method, rawOp] of Object.entries(pathItem as any)) {
       const op = rawOp as any
@@ -26,33 +60,57 @@ export async function generate(options: { openapi: string }) {
       const endpoint = {
         operationId: op.operationId,
         path: pathKey,
-        method,
+        method: method.toLowerCase(),
         ...op
       }
 
-      const baseForm = generateForm(endpoint)
-      const fileName = `${op.operationId}.form.json`
+      /**
+       * Gera o ScreenSchema completo
+       */
+      const screenSchema = generateScreen(endpoint)
+      const fileName = `${op.operationId}.screen.json`
 
-      // base (sempre regenerado)
+      /**
+       * 1️⃣ generated → SEMPRE sobrescrito (base técnica)
+       */
+      const generatedPath = path.join(generatedDir, fileName)
       fs.writeFileSync(
-        path.join(generatedDir, fileName),
-        JSON.stringify(baseForm, null, 2)
+        generatedPath,
+        JSON.stringify(screenSchema, null, 2)
       )
 
-      // overlay (preserva decisões do usuário)
+      /**
+       * 2️⃣ overlays → só cria se NÃO existir (decisão humana)
+       */
       const overlayPath = path.join(overlaysDir, fileName)
-      const existingOverlay = fs.existsSync(overlayPath)
-        ? JSON.parse(fs.readFileSync(overlayPath, 'utf-8'))
-        : undefined
+      if (!fs.existsSync(overlayPath)) {
+        fs.writeFileSync(
+          overlayPath,
+          JSON.stringify(screenSchema, null, 2)
+        )
+      }
 
-      const syncedOverlay = syncOverlay(baseForm, existingOverlay)
+      /**
+       * 3️⃣ rota automática
+       * URL = operationId (MVP)
+       */
+      routes.push({
+        path: op.operationId,
+        operationId: op.operationId
+      })
 
-      fs.writeFileSync(
-        overlayPath,
-        JSON.stringify(syncedOverlay, null, 2)
-      )
-
-      console.log(`✔ Synced ${op.operationId}`)
+      console.log(`✔ Generated ${op.operationId}`)
     }
   }
+
+  /**
+   * 4️⃣ Gera arquivo de rotas
+   */
+  const routesPath = path.join(generateUiRoot, 'routes.json')
+  fs.writeFileSync(
+    routesPath,
+    JSON.stringify(routes, null, 2)
+  )
+
+  console.log('✔ Routes generated')
 }

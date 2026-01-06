@@ -29,3 +29,6 @@ node dist/index.js generate \
   --output /Users/nicoleprevid/Downloads/generateui-playground/generated
 
 node dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/realWorldOpenApi.yaml
+
+
+node dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/realWorldOpenApi.yaml

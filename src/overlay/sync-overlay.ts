@@ -1,45 +1,27 @@
-export function syncOverlay(baseForm: any, overlay?: any) {
-  if (!overlay) {
-    return {
-      ...baseForm,
-      fields: baseForm.fields.map((f: any) => ({
-        ...f,
-        label: null,
-        placeholder: null,
-        ui: null,
-        validations: []
-      }))
-    }
+export function syncOverlay(base: any, overlay?: any) {
+  if (!overlay) return base
+
+  return {
+    ...base,
+
+    layout: overlay.layout ?? base.layout,
+    actions: overlay.actions ?? base.actions,
+
+    fields: mergeFields(base.fields, overlay.fields)
   }
+}
+function mergeFields(base: any[], overlay: any[] = []) {
+  const overlayMap = new Map(overlay.map(f => [f.name, f]))
 
-  const overlayByName = new Map(
-    overlay.fields.map((f: any) => [f.name, f])
-  )
+  return base.map(baseField => {
+    const custom = overlayMap.get(baseField.name)
 
-  const syncedFields = baseForm.fields.map((baseField: any) => {
-    const existing = overlayByName.get(baseField.name)
-
-    if (!existing) {
-      return {
-        ...baseField,
-        label: null,
-        placeholder: null,
-        ui: null,
-        validations: []
-      }
-    }
+    if (!custom) return baseField
 
     return {
       ...baseField,
-      ...existing,
+      ...custom,
       required: baseField.required
     }
   })
-
-  return {
-    ...overlay,
-    endpoint: baseForm.endpoint,
-    method: baseForm.method,
-    fields: syncedFields
-  }
 }
