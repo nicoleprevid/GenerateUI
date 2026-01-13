@@ -31,4 +31,14 @@ node dist/index.js generate \
 node dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/realWorldOpenApi.yaml
 
 
-node dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/realWorldOpenApi.yaml
+node dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/realWorldOpenApi.yaml
+
+
+
+
+--- angular
+
+node dist/index.js angular \
+  --schemas frontend/src/app/assets/generate-ui \
+  --features frontend/src/app/features
+

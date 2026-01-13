@@ -67,7 +67,7 @@ export async function generate(options: { openapi: string }) {
       /**
        * Gera o ScreenSchema completo
        */
-      const screenSchema = generateScreen(endpoint)
+      const screenSchema = generateScreen(endpoint, api)
       const fileName = `${op.operationId}.screen.json`
 
       /**

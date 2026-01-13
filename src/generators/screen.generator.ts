@@ -40,8 +40,8 @@ function inferSubmitWrap(endpoint: any): string | null {
   return null
 }
 
-export function generateScreen(endpoint: any) {
-  const fields = generateFields(endpoint)
+export function generateScreen(endpoint: any, api?: any) {
+  const fields = generateFields(endpoint, api)
   const method = endpoint.method.toLowerCase()
 
   return {

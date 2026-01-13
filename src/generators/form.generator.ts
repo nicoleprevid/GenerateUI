@@ -27,23 +27,70 @@ function mapSchema(schema: any): GeneratedField[] {
  * - Wrapper (ex: article, user) NÃO vira campo de formulário
  * - Se houver apenas 1 propriedade object, ela é o wrapper
  */
-export function generateFields(endpoint: any): GeneratedField[] {
+export function generateFields(endpoint: any, api?: any): GeneratedField[] {
   const schema =
     endpoint.requestBody?.content?.['application/json']?.schema
 
-  if (!schema || !schema.properties) return []
+  const unwrapped = unwrapSchema(schema)
+  const baseSchema = unwrapped ?? schema
+
+  if (!baseSchema || !baseSchema.properties) return []
+
+  const method = String(endpoint.method || '').toLowerCase()
+  const entity = String(endpoint.operationId || '').replace(
+    /^(Create|Update|Get|Delete)/,
+    ''
+  )
+
+  let finalSchema = baseSchema
+
+  if (method === 'post' && entity && api?.components?.schemas) {
+    const schemas = api.components.schemas
+    const newSchema =
+      unwrapSchema(schemas[`New${entity}`]) ??
+      schemas[`New${entity}`]
+    const updateSchema =
+      unwrapSchema(schemas[`Update${entity}`]) ?? schemas[`Update${entity}`]
+
+    if (newSchema && updateSchema) {
+      finalSchema = mergeSchemas(newSchema, updateSchema)
+    } else if (newSchema) {
+      finalSchema = newSchema
+    }
+  }
+
+  return mapSchema(finalSchema)
+}
+
+function unwrapSchema(schema: any) {
+  if (!schema || !schema.properties) return null
 
   const propertyNames = Object.keys(schema.properties)
 
-  // Caso clássico: { article: { ... } } ou { user: { ... } }
   if (
     propertyNames.length === 1 &&
     schema.properties[propertyNames[0]]?.type === 'object'
   ) {
-    const wrapper = schema.properties[propertyNames[0]]
-    return mapSchema(wrapper)
+    return schema.properties[propertyNames[0]]
   }
 
-  // Caso normal (sem wrapper)
-  return mapSchema(schema)
+  return null
+}
+
+function mergeSchemas(primary: any, secondary: any) {
+  const merged = {
+    type: 'object',
+    properties: {
+      ...(primary?.properties ?? {}),
+      ...(secondary?.properties ?? {})
+    },
+    required: Array.from(
+      new Set([
+        ...(primary?.required ?? []),
+        ...(secondary?.required ?? [])
+      ])
+    )
+  }
+
+  return merged
 }
