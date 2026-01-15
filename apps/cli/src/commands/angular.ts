@@ -2,10 +2,12 @@ import fs from 'fs'
 import path from 'path'
 import { generateFeature } from '../generators/angular/feature.generator'
 import { generateRoutes } from '../generators/angular/routes.generator'
+import { sendTelemetry } from '../telemetry'
 
 export async function angular(options: {
   schemasPath: string
   featuresPath: string
+  telemetryEnabled: boolean
 }) {
   /**
    * Onde estão os schemas
@@ -45,5 +47,6 @@ export async function angular(options: {
 
   generateRoutes(routes, featuresRoot)
 
+  await sendTelemetry('generate', options.telemetryEnabled)
   console.log(`✔ Angular features generated at ${featuresRoot}`)
 }

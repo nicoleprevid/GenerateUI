@@ -3,13 +3,23 @@ import path from 'path'
 import { loadOpenApi } from '../openapi/load-openapi'
 import { generateScreen } from '../generators/screen.generator'
 import { mergeScreen } from '../generators/screen.merge'
+import { getPermissions } from '../license/permissions'
+import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
+import { requireFeature } from '../license/guard'
+import { sendTelemetry } from '../telemetry'
 
 interface GeneratedRoute {
   path: string
   operationId: string
 }
 
-export async function generate(options: { openapi: string; debug?: boolean }) {
+export async function generate(options: {
+  openapi: string
+  debug?: boolean
+  telemetryEnabled: boolean
+  telemetryCommand: 'generate' | 'regenerate'
+  requireSafeRegeneration?: boolean
+}) {
   /**
    * Caminho absoluto do OpenAPI (YAML)
    * Ex: /Users/.../generateui-playground/realWorldOpenApi.yaml
@@ -44,6 +54,30 @@ export async function generate(options: { openapi: string; debug?: boolean }) {
    */
   const routes: GeneratedRoute[] = []
   const usedOperationIds = new Set<string>()
+
+  const permissions = await getPermissions()
+  const device = loadDeviceIdentity()
+
+  await sendTelemetry(options.telemetryCommand, options.telemetryEnabled)
+
+  if (options.requireSafeRegeneration) {
+    requireFeature(
+      permissions.features,
+      'safeRegeneration',
+      'Regeneration requires safe regeneration.'
+    )
+  }
+
+  if (
+    permissions.features.maxGenerations > -1 &&
+    device.freeGenerationsUsed >= permissions.features.maxGenerations
+  ) {
+    throw new Error(
+      '🔒 Você já utilizou sua geração gratuita.\n' +
+        'O plano Dev libera gerações ilimitadas, regeneração segura e UI inteligente.\n' +
+        '👉 Execute `generate-ui login` para continuar.'
+    )
+  }
 
   /**
    * Parse do OpenAPI (já com $refs resolvidos)
@@ -103,30 +137,40 @@ export async function generate(options: { openapi: string; debug?: boolean }) {
        * 2️⃣ overlays → merge semântico (preserva decisões do usuário)
        */
       const overlayPath = path.join(overlaysDir, fileName)
-      const overlay = fs.existsSync(overlayPath)
-        ? JSON.parse(fs.readFileSync(overlayPath, 'utf-8'))
-        : null
+      const canOverride = permissions.features.uiOverrides
+      const canRegenerateSafely = permissions.features.safeRegeneration
 
-      const merged = mergeScreen(
-        screenSchema,
-        overlay,
-        previousGenerated,
-        {
-          openapiVersion: api?.info?.version || 'unknown',
-          debug: options.debug
+      if (canOverride && canRegenerateSafely) {
+        const overlay = fs.existsSync(overlayPath)
+          ? JSON.parse(fs.readFileSync(overlayPath, 'utf-8'))
+          : null
+
+        const merged = mergeScreen(
+          screenSchema,
+          overlay,
+          previousGenerated,
+          {
+            openapiVersion: api?.info?.version || 'unknown',
+            debug: options.debug
+          }
+        )
+
+        fs.writeFileSync(
+          overlayPath,
+          JSON.stringify(merged.screen, null, 2)
+        )
+
+        if (options.debug && merged.debug.length) {
+          console.log(`ℹ Merge ${operationId}`)
+          for (const line of merged.debug) {
+            console.log(`  - ${line}`)
+          }
         }
-      )
-
-      fs.writeFileSync(
-        overlayPath,
-        JSON.stringify(merged.screen, null, 2)
-      )
-
-      if (options.debug && merged.debug.length) {
-        console.log(`ℹ Merge ${operationId}`)
-        for (const line of merged.debug) {
-          console.log(`  - ${line}`)
-        }
+      } else {
+        fs.writeFileSync(
+          overlayPath,
+          JSON.stringify(screenSchema, null, 2)
+        )
       }
 
       /**
@@ -166,6 +210,10 @@ export async function generate(options: { openapi: string; debug?: boolean }) {
         console.log(`✖ Removed overlay ${opId}`)
       }
     }
+  }
+
+  if (permissions.features.maxGenerations > -1) {
+    incrementFreeGeneration()
   }
 
   console.log('✔ Routes generated')

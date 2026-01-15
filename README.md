@@ -18,17 +18,33 @@ Ideia principal:
 ## Instalacao (local)
 ```
 npm install
-npm run build
+npm run build:cli
+```
+
+## Estrutura
+```
+generate-ui/
+├─ apps/
+│  ├─ cli/
+│  ├─ api/
+│  └─ web-auth/
+└─ packages/
+   └─ shared/
 ```
 
 ## Passo 1 — Gerar schemas (OpenAPI → screen.json)
 ```
-node dist/index.js generate --openapi /path/to/openapi.yaml
+node apps/cli/dist/index.js generate --openapi /path/to/openapi.yaml
+```
+
+Regeneracao segura (Dev):
+```
+node apps/cli/dist/index.js regenerate --openapi /path/to/openapi.yaml
 ```
 
 Modo debug (explica merge):
 ```
-node dist/index.js generate --openapi /path/to/openapi.yaml --debug
+node apps/cli/dist/index.js generate --openapi /path/to/openapi.yaml --debug
 ```
 
 Saidas:
@@ -37,9 +53,14 @@ Saidas:
 
 ## Passo 2 — Gerar Angular (screen.json → Angular)
 ```
-node dist/index.js angular \
+node apps/cli/dist/index.js angular \
   --schemas /path/to/frontend/src/app/assets/generate-ui \
   --features /path/to/frontend/src/app/features
+```
+
+## Login (Dev)
+```
+node apps/cli/dist/index.js login
 ```
 
 ## Onde editar (para mudar a UI)
@@ -68,10 +89,45 @@ O que nao deve mudar:
 
 ## Exemplo rapido (Playground)
 ```
-node dist/index.js generate \
+node apps/cli/dist/index.js generate \
   --openapi /Users/nicoleprevid/Downloads/generateui-playground/realWorldOpenApi.yaml
 
-node dist/index.js angular \
+node apps/cli/dist/index.js angular \
   --schemas /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/assets/generate-ui \
   --features /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/features
 ```
+
+## Licenciamento (Free/Dev)
+- Free funciona localmente, sem login, com 1 geracao por device.
+- Dev exige login para liberar geracoes ilimitadas, regeneracao segura e UI inteligente.
+- Telemetria minima por execucao. Use `--no-telemetry` para desativar.
+
+Arquivos locais:
+- `~/.generateui/device.json`
+- `~/.generateui/token.json`
+
+Frase-guia:
+> O GenerateUI funciona localmente. O login so existe para liberar capacidades.
+
+## API + Web Auth (local)
+```
+npm run -w apps/api dev
+npm run -w apps/web-auth dev
+```
+
+Variaveis de ambiente da API:
+- `API_BASE_URL` (ex: http://localhost:3000)
+- `GENERATEUI_JWT_SECRET`
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+
+Opcao pratica (uma vez so):
+- copie `apps/api/.env.example` para `apps/api/.env` e preencha seus valores.
+
+
+
+---
+node apps/cli/dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/openapiBB.yaml
+
+rm ~/.generateui/device.json
+
