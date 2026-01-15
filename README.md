@@ -124,10 +124,15 @@ Variaveis de ambiente da API:
 Opcao pratica (uma vez so):
 - copie `apps/api/.env.example` para `apps/api/.env` e preencha seus valores.
 
+## Publicar CLI (npm)
+```
+npm run build:cli
+npm run publish:cli
+```
+
 
 
 ---
 node apps/cli/dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/openapiBB.yaml
 
 rm ~/.generateui/device.json
-

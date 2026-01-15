@@ -14,7 +14,8 @@
   "scripts": {
     "build:cli": "npm run -w apps/cli build",
     "build:api": "npm run -w apps/api build",
-    "build:web-auth": "npm run -w apps/web-auth build"
+    "build:web-auth": "npm run -w apps/web-auth build",
+    "publish:cli": "npm publish --workspace apps/cli"
   },
   "license": "MIT",
   "keywords": [],
