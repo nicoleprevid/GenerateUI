@@ -5,6 +5,8 @@ export interface GeneratedField {
   label: string | null
   placeholder: string | null
   ui: string | null
+  options?: any[] | null
+  defaultValue?: any | null
   validations: any[]
 }
 
@@ -18,6 +20,8 @@ function mapSchema(schema: any): GeneratedField[] {
     label: null,
     placeholder: null,
     ui: prop.type === 'array' ? 'tags' : null,
+    options: prop.enum ?? null,
+    defaultValue: prop.default ?? null,
     validations: []
   }))
 }

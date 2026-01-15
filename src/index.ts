@@ -17,9 +17,11 @@ program
   .command('generate')
   .description('Generate screen schemas from OpenAPI')
   .requiredOption('-o, --openapi <path>', 'OpenAPI file')
+  .option('-d, --debug', 'Explain merge decisions')
   .action(async (options) => {
     await generate({
-      openapi: options.openapi
+      openapi: options.openapi,
+      debug: options.debug
     })
   })
 
