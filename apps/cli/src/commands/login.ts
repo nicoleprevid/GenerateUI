@@ -1,14 +1,17 @@
 import http from 'http'
 import { URL } from 'url'
+import { createInterface } from 'readline/promises'
 import { getApiBaseUrl, getWebAuthUrl } from '../runtime/config'
 import { openBrowser } from '../runtime/open-browser'
 import { saveToken } from '../license/token'
 import { fetchPermissions } from '../license/permissions'
-import { sendTelemetry } from '../telemetry'
+import { trackCommand, trackLogin } from '../telemetry'
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000
 
 export async function login(options: { telemetryEnabled: boolean }) {
+  void trackCommand('login', options.telemetryEnabled)
+
   const token = await waitForLogin()
   saveToken(token)
 
@@ -18,9 +21,27 @@ export async function login(options: { telemetryEnabled: boolean }) {
     // Cached permissions will be refreshed on next online command.
   }
 
-  await sendTelemetry('login', options.telemetryEnabled)
+  const email = await promptEmail()
+  await trackLogin(email, options.telemetryEnabled)
 
   console.log('✔ Login completo')
+}
+
+async function promptEmail(): Promise<string | null> {
+  if (!process.stdin.isTTY) return null
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout
+  })
+
+  try {
+    const value = await rl.question('Email (optional): ')
+    const trimmed = value.trim()
+    return trimmed.length ? trimmed : null
+  } finally {
+    rl.close()
+  }
 }
 
 async function waitForLogin(): Promise<{

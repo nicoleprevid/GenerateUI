@@ -5,7 +5,7 @@ import { generateScreen } from '../generators/screen.generator'
 import { mergeScreen } from '../generators/screen.merge'
 import { getPermissions } from '../license/permissions'
 import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
-import { sendTelemetry } from '../telemetry'
+import { trackCommand } from '../telemetry'
 
 interface GeneratedRoute {
   path: string
@@ -17,6 +17,8 @@ export async function generate(options: {
   debug?: boolean
   telemetryEnabled: boolean
 }) {
+  void trackCommand('generate', options.telemetryEnabled)
+
   /**
    * Caminho absoluto do OpenAPI (YAML)
    * Ex: /Users/.../generateui-playground/realWorldOpenApi.yaml
@@ -54,8 +56,6 @@ export async function generate(options: {
 
   const permissions = await getPermissions()
   const device = loadDeviceIdentity()
-
-  await sendTelemetry('generate', options.telemetryEnabled)
 
   if (
     permissions.features.maxGenerations > -1 &&

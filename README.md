@@ -115,6 +115,12 @@ What happens after this command:
 - You authenticate your device to unlock Dev features.
 - Dev features include safe regeneration, UI overrides, and unlimited generations.
 
+## Telemetry
+
+GenerateUI collects anonymous usage data such as CLI version, OS, and executed commands to improve the product.
+No source code or OpenAPI content is ever sent.
+Telemetry can be disabled by setting `telemetry=false` in `~/.generateui/config.json` or by running with `--no-telemetry`.
+
 ## Plugging Routes into Your App
 
 GenerateUI usually creates route files such as:
