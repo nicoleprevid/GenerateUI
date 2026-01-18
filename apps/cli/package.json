@@ -1,5 +1,5 @@
 {
-  "name": "generate-ui",
+  "name": "generate-ui-cli",
   "version": "1.0.0",
   "description": "Generate UI from OpenAPI locally with optional Dev unlocks.",
   "license": "MIT",

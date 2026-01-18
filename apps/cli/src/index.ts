@@ -27,8 +27,7 @@ program
       await generate({
         openapi: options.openapi,
         debug: options.debug,
-        telemetryEnabled: telemetry,
-        telemetryCommand: 'generate'
+        telemetryEnabled: telemetry
       })
     } catch (error) {
       handleCliError(error)
@@ -72,29 +71,6 @@ program
     const { telemetry } = program.opts<{ telemetry: boolean }>()
     try {
       await login({ telemetryEnabled: telemetry })
-    } catch (error) {
-      handleCliError(error)
-    }
-  })
-
-/**
- * 4️⃣ Regenerate with safe merge
- */
-program
-  .command('regenerate')
-  .description('Regenerate screen schemas with safe merge')
-  .requiredOption('-o, --openapi <path>', 'OpenAPI file')
-  .option('-d, --debug', 'Explain merge decisions')
-  .action(async (options) => {
-    const { telemetry } = program.opts<{ telemetry: boolean }>()
-    try {
-      await generate({
-        openapi: options.openapi,
-        debug: options.debug,
-        telemetryEnabled: telemetry,
-        telemetryCommand: 'regenerate',
-        requireSafeRegeneration: true
-      })
     } catch (error) {
       handleCliError(error)
     }

@@ -1,138 +1,248 @@
-# GenerateUI
+# GenerateUI CLI
 
-GenerateUI transforma **OpenAPI → screen.json → Angular**, com re-geracao segura.
+Generate CRUD screens (List, Create/Edit, Delete), typed API services, and routes from your OpenAPI spec with real Angular code you can own and evolve.
 
-Ideia principal:
-- **API manda na estrutura** (campos, tipos, required, endpoint).
-- **Usuario manda na apresentacao** (labels, ordem, visibilidade).
+Goal: stop rewriting repetitive CRUD and start with a functional, scalable UI foundation.
 
-## Como funciona (didatico)
-1) Voce roda `generate` com um OpenAPI.
-2) O GenerateUI cria arquivos `screen.json`:
-   - `generated/` (sempre recriado)
-   - `overlays/` (voce pode editar)
-3) Voce roda `angular`, que gera features Angular.
-4) A UI **le o JSON do overlay em runtime**.
-   - Se voce mudar um label no JSON, a tela muda.
+## What GenerateUI Does
 
-## Instalacao (local)
-```
-npm install
-npm run build:cli
-```
+Given an `openapi.yaml` (or `.json`), GenerateUI can generate:
 
-## Estrutura
-```
-generate-ui/
-├─ apps/
-│  ├─ cli/
-│  ├─ api/
-│  └─ web-auth/
-└─ packages/
-   └─ shared/
-```
+- `screens.json` (detected screens/endpoints)
+- one folder per feature/screen
+- typed API services and DTOs
+- plug-and-play routes
+- basic CRUD UI (list + form + delete confirmation)
+- UI states (loading / empty / error)
 
-## Passo 1 — Gerar schemas (OpenAPI → screen.json)
-```
-node apps/cli/dist/index.js generate --openapi /path/to/openapi.yaml
-```
+GenerateUI is code generation, not runtime rendering.
 
-Regeneracao segura (Dev):
-```
-node apps/cli/dist/index.js regenerate --openapi /path/to/openapi.yaml
+## Before You Start (Quick Checklist)
+
+You will need:
+
+- Node.js (LTS recommended)
+- A valid OpenAPI v3.x file
+- An Angular project (for Angular generation) > v.15
+- Optional: a design system (Material, PrimeNG, internal DS)
+
+Important:
+- Incomplete OpenAPI specs (missing schemas, responses, or types) may limit what can be generated.
+- Some public APIs require query params (e.g. `fields=...`). Make sure your API calls actually work.
+
+## Installation
+
+### Global install
+```bash
+npm install -g generate-ui-cli
 ```
 
-Modo debug (explica merge):
-```
-node apps/cli/dist/index.js generate --openapi /path/to/openapi.yaml --debug
-```
-
-Saidas:
-- `frontend/src/app/assets/generate-ui/generated`
-- `frontend/src/app/assets/generate-ui/overlays`
-
-## Passo 2 — Gerar Angular (screen.json → Angular)
-```
-node apps/cli/dist/index.js angular \
-  --schemas /path/to/frontend/src/app/assets/generate-ui \
-  --features /path/to/frontend/src/app/features
+### Local install
+```bash
+npm install -D generate-ui-cli
 ```
 
-## Login (Dev)
-```
-node apps/cli/dist/index.js login
-```
-
-## Onde editar (para mudar a UI)
-Edite **apenas** os overlays:
-```
-frontend/src/app/assets/generate-ui/overlays/*.screen.json
+Then run:
+```bash
+npx generate-ui --help
 ```
 
-O que pode mudar sem quebrar:
-- `entity` (titulo)
-- `actions.primary.label`
-- campos: `label`, `placeholder`, `hint`, `info`
-- campos: `options`, `defaultValue`
-- `hidden` (ou `meta.userRemoved = true`)
+## Recommended Workflow
 
-O que nao deve mudar:
-- `name`, `type`, `required`
-- `api.operationId`, `api.endpoint`, `api.method`
+GenerateUI works in two main steps:
 
-## Merge seguro (resumo)
-- Campo novo na API → entra como `autoAdded`, escondido se opcional.
-- Campo removido da API → sai sempre.
-- Campo removido pelo usuario → nunca volta.
-- Required/optional muda → valida, mas nao remove.
-- Enum muda → input/select se ajusta.
+1. Read the OpenAPI and generate `screens.json`
+2. Generate Angular code from `screens.json`
 
-## Exemplo rapido (Playground)
-```
-node apps/cli/dist/index.js generate \
-  --openapi /Users/nicoleprevid/Downloads/generateui-playground/realWorldOpenApi.yaml
+## 1) Generate `screens.json`
 
-node apps/cli/dist/index.js angular \
-  --schemas /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/assets/generate-ui \
-  --features /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/features
+```bash
+generate-ui generate --openapi youropenapi.yaml
 ```
 
-## Licenciamento (Free/Dev)
-- Free funciona localmente, sem login, com 1 geracao por device.
-- Dev exige login para liberar geracoes ilimitadas, regeneracao segura e UI inteligente.
-- Telemetria minima por execucao. Use `--no-telemetry` para desativar.
+What happens after this command:
 
-Arquivos locais:
+- GenerateUI reads your OpenAPI and detects endpoints.
+- It identifies CRUD-like operations (list, get by id, create, update, delete).
+- It maps request/response schemas.
+- A `screens.json` file is created in the output folder.
+- Two JSON folders are created: `generated/` (auto-created files) and `override/` (your manual edits that should be preserved on regeneration).
+
+What you should review now:
+
+- Are all expected screens present?
+- Are screen and route names correct?
+- Are required query params represented?
+- Do the detected fields match your API schemas?
+
+Tip: this is the best moment to adjust naming and structure before generating code.
+
+## 2) Generate Angular code from `screens.json`
+
+```bash
+generate-ui angular \
+  --schemas /src/app/assets/generate-ui \
+  --features /src/app/features
+```
+
+What happens after this command:
+
+- For each screen defined in `screens.json`, GenerateUI creates:
+  - a feature folder
+  - list and form components (create/edit)
+  - a typed API service
+  - DTO/types files
+  - route definitions
+
+What you should review now:
+
+- Are files generated in the correct location?
+- Does the project compile?
+- Are routes correctly generated and importable?
+- Does the basic UI work end-to-end?
+
+Note:
+If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
+
+## Login (Dev plan)
+
+```bash
+generate-ui login
+```
+
+What happens after this command:
+
+- You authenticate your device to unlock Dev features.
+- Dev features include safe regeneration, UI overrides, and unlimited generations.
+
+## Plugging Routes into Your App
+
+GenerateUI usually creates route files such as:
+
+- `generated.routes.ts`
+- or per feature: `users.routes.ts`, `orders.routes.ts`
+
+Example (Angular Router):
+
+```ts
+import { GENERATED_ROUTES } from './app/generated/generated.routes';
+
+export const routes = [
+  // ...your existing routes
+  ...GENERATED_ROUTES
+];
+```
+
+Things to pay attention to:
+
+- route prefixes (`/admin`, `/app`, etc.)
+- authentication guards
+- layout components (`<router-outlet>` placement)
+
+## Example Generated Structure
+
+```txt
+src/app/generated/
+  users/
+    users-list.component.ts
+    users-form.component.ts
+    users.routes.ts
+    users.service.ts
+    users.types.ts
+  orders/
+    orders-list.component.ts
+    orders-form.component.ts
+    orders.routes.ts
+    orders.service.ts
+    orders.types.ts
+  generated.routes.ts
+```
+
+## After Generation: How to Customize Safely
+
+GenerateUI gives you a working baseline. From here, you typically:
+
+- Customize UI (design system components, masks, validators)
+- Add business logic (conditional fields, permissions)
+- Improve UX (pagination, filtering, empty/error states)
+
+Rule of thumb: the generated code is yours — generate once, then evolve freely.
+
+## Overrides and Regeneration Behavior
+
+You can edit files inside `override/` to customize labels, placeholders, hints, and other details. When your API changes and you regenerate, GenerateUI updates what is safe to change from the OpenAPI, but preserves what you defined in `override/` to avoid breaking your flow.
+
+Even after the Angular TypeScript files are generated, changes you make in `override/` will be mirrored the next time you regenerate.
+
+## Common Issues and Fixes
+
+### "required option '-o, --openapi <path>' not specified"
+
+You ran the command without passing the OpenAPI file.
+
+Fix:
+```bash
+generate-ui generate --openapi /path/to/openapi.yaml
+```
+
+### "An endpoint exists but no screen was generated"
+
+This may happen if:
+
+- `operationId` is missing
+- request/response schemas are empty
+- required response codes (`200`, `201`) are missing
+
+Recommendation:
+
+- always define `operationId`
+- include schemas in responses
+
+### "Routes were generated but navigation does not work"
+
+Usually a routing integration issue.
+
+Check:
+
+- if `GENERATED_ROUTES` is imported/spread
+- if route prefixes match your menu
+- if there is a `<router-outlet>` in your layout
+
+## Team Workflow Recommendation
+
+1. Update OpenAPI
+2. Generate `screens.json`
+3. Review `screens.json`
+4. Generate Angular code
+5. Customize UI and business rules
+6. Commit
+
+## Tips for Better Results
+
+- Use consistent `operationId`s (`users_list`, `users_create`, etc.)
+- Define complete schemas (types, required, enums)
+- Standardize responses (`200`, `201`, `204`)
+- Document important query params (pagination, filters)
+- If your API requires `fields=...`, reflect it in `screens.json`
+
+## Roadmap (Example)
+
+- [ ] Layout presets (minimal / enterprise / dashboard)
+- [ ] Design system adapters (Material / PrimeNG / custom)
+- [ ] Filters and real pagination
+- [ ] UI schema overrides (visual control without touching OpenAPI)
+- [ ] React support
+
+## Contributing
+
+Issues and PRs are welcome.
+If you use GenerateUI in a company or real project, let us know — it helps guide the roadmap.
+
+## License
+
+MIT
+
+## Local Files
+
 - `~/.generateui/device.json`
 - `~/.generateui/token.json`
-
-Frase-guia:
-> O GenerateUI funciona localmente. O login so existe para liberar capacidades.
-
-## API + Web Auth (local)
-```
-npm run -w apps/api dev
-npm run -w apps/web-auth dev
-```
-
-Variaveis de ambiente da API:
-- `API_BASE_URL` (ex: http://localhost:3000)
-- `GENERATEUI_JWT_SECRET`
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-
-Opcao pratica (uma vez so):
-- copie `apps/api/.env.example` para `apps/api/.env` e preencha seus valores.
-
-## Publicar CLI (npm)
-```
-npm run build:cli
-npm run publish:cli
-```
-
-
-
----
-node apps/cli/dist/index.js generate --openapi /Users/nicoleprevid/Downloads/generateui-playground/openapiBB.yaml
-
-rm ~/.generateui/device.json

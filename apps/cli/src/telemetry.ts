@@ -1,7 +1,7 @@
 import { getApiBaseUrl, getCliVersion } from './runtime/config'
 import { loadDeviceIdentity } from './license/device'
 
-export type TelemetryCommand = 'generate' | 'regenerate' | 'login'
+export type TelemetryCommand = 'generate' | 'login'
 
 function getOsName() {
   switch (process.platform) {

@@ -5,7 +5,6 @@ import { generateScreen } from '../generators/screen.generator'
 import { mergeScreen } from '../generators/screen.merge'
 import { getPermissions } from '../license/permissions'
 import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
-import { requireFeature } from '../license/guard'
 import { sendTelemetry } from '../telemetry'
 
 interface GeneratedRoute {
@@ -17,8 +16,6 @@ export async function generate(options: {
   openapi: string
   debug?: boolean
   telemetryEnabled: boolean
-  telemetryCommand: 'generate' | 'regenerate'
-  requireSafeRegeneration?: boolean
 }) {
   /**
    * Caminho absoluto do OpenAPI (YAML)
@@ -58,15 +55,7 @@ export async function generate(options: {
   const permissions = await getPermissions()
   const device = loadDeviceIdentity()
 
-  await sendTelemetry(options.telemetryCommand, options.telemetryEnabled)
-
-  if (options.requireSafeRegeneration) {
-    requireFeature(
-      permissions.features,
-      'safeRegeneration',
-      'Regeneration requires safe regeneration.'
-    )
-  }
+  await sendTelemetry('generate', options.telemetryEnabled)
 
   if (
     permissions.features.maxGenerations > -1 &&
