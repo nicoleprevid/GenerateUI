@@ -161,6 +161,45 @@ Things to pay attention to:
 - authentication guards
 - layout components (`<router-outlet>` placement)
 
+## Angular >= 15 (standalone) setup
+
+Step-by-step:
+
+1) Generate files:
+
+```bash
+generate-ui generate --openapi /path/to/openapi.yaml
+generate-ui angular
+```
+
+2) Import generated routes in `src/app/app.routes.ts`:
+
+```ts
+import { generatedRoutes } from '../generate-ui/routes.gen'
+
+export const routes: Routes = [
+  // your existing routes
+  ...generatedRoutes
+]
+```
+
+3) Ensure `provideRouter` is used in `src/main.ts`:
+
+```ts
+import { provideRouter } from '@angular/router'
+import { routes } from './app/app.routes'
+
+bootstrapApplication(AppComponent, {
+  providers: [provideRouter(routes)]
+})
+```
+
+4) Check `@angular/router` is installed:
+
+```bash
+npm ls @angular/router
+```
+
 ## Example Generated Structure
 
 ```txt
