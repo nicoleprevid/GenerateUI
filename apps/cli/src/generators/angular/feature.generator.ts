@@ -14,7 +14,11 @@ type UiField = {
   source: 'path' | 'body' | 'query'
 }
 
-export function generateFeature(schema: any, root: string) {
+export function generateFeature(
+  schema: any,
+  root: string,
+  schemasRoot: string
+) {
   const rawName = schema.api.operationId
   const name = toPascalCase(rawName)
   const folder = toFolderName(name)
@@ -71,6 +75,11 @@ export function generateFeature(schema: any, root: string) {
       : rawName
 
   const subtitle = `${method.toUpperCase()} ${endpoint}`
+  const schemaImportPath = buildSchemaImportPath(
+    featureDir,
+    schemasRoot,
+    rawName
+  )
 
   /**
    * 1️⃣ Component (sempre sobrescreve)
@@ -90,7 +99,7 @@ import { UiFieldComponent } from '../../ui/ui-field/ui-field.component'
 import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
 import { ${name}Service } from './${fileBase}.service.gen'
 import { ${name}Gen } from './${fileBase}.gen'
-import screenSchema from '../../assets/generate-ui/overlays/${rawName}.screen.json'
+import screenSchema from '${schemaImportPath}'
 
 @Component({
   selector: 'app-${toKebab(name)}',
@@ -1297,4 +1306,28 @@ function toPascalCase(value: string) {
     .filter(Boolean)
     .map(part => part[0].toUpperCase() + part.slice(1))
     .join('')
+}
+
+function buildSchemaImportPath(
+  featureDir: string,
+  schemasRoot: string,
+  rawName: string
+) {
+  const schemaFile = path.join(
+    schemasRoot,
+    'overlays',
+    `${rawName}.screen.json`
+  )
+  let relativePath = path.relative(featureDir, schemaFile)
+  relativePath = toPosixPath(relativePath)
+
+  if (!relativePath.startsWith('.')) {
+    relativePath = `./${relativePath}`
+  }
+
+  return relativePath
+}
+
+function toPosixPath(value: string) {
+  return value.split(path.sep).join(path.posix.sep)
 }

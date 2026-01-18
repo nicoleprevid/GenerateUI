@@ -1,46 +1,31 @@
-import fs from 'fs'
-import os from 'os'
-import path from 'path'
 import { randomUUID } from 'crypto'
 import { getCliVersion } from './runtime/config'
+import {
+  loadUserConfig,
+  saveUserConfig
+} from './runtime/user-config'
 import { loadDeviceIdentity } from './license/device'
 
 export type TelemetryCommand = 'generate' | 'angular' | 'login' | 'help'
 export type TelemetryEvent = 'first_run' | 'command_run' | 'login'
 
-type TelemetryConfig = {
-  installationId: string
-  telemetry?: boolean
-}
-
 const TELEMETRY_URL =
   process.env.GENERATEUI_TELEMETRY_URL?.trim() ||
-  'generateuibackend-production.up.railway.app'
+  'https://api.generateui.dev/events'
 const TELEMETRY_TIMEOUT_MS = 1000
 
 function getOsName() {
   return process.platform
 }
 
-function getConfigPath() {
-  return path.join(os.homedir(), '.generateui', 'config.json')
-}
-
 function loadOrCreateConfig(): {
-  config: TelemetryConfig
+  config: {
+    installationId: string
+    telemetry?: boolean
+  }
   isNew: boolean
 } {
-  const configPath = getConfigPath()
-  let config: TelemetryConfig | null = null
-
-  if (fs.existsSync(configPath)) {
-    try {
-      const raw = fs.readFileSync(configPath, 'utf-8')
-      config = JSON.parse(raw) as TelemetryConfig
-    } catch {
-      config = null
-    }
-  }
+  let config = loadUserConfig()
 
   let isNew = false
   let shouldWrite = false
@@ -65,17 +50,33 @@ function loadOrCreateConfig(): {
   }
 
   if (shouldWrite) {
-    const dir = path.dirname(configPath)
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2))
+    saveUserConfig(config)
   }
 
-  return { config, isNew }
+  const installationId =
+    config.installationId ?? randomUUID()
+
+  if (installationId !== config.installationId) {
+    shouldWrite = true
+    config.installationId = installationId
+  }
+
+  if (shouldWrite) {
+    saveUserConfig(config)
+  }
+
+  return {
+    config: {
+      installationId,
+      telemetry: config.telemetry
+    },
+    isNew
+  }
 }
 
 function isTelemetryEnabled(
   cliEnabled: boolean,
-  config: TelemetryConfig
+  config: { telemetry?: boolean }
 ) {
   if (!cliEnabled) return false
   return config.telemetry !== false

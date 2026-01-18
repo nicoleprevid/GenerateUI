@@ -65,8 +65,9 @@ What happens after this command:
 - GenerateUI reads your OpenAPI and detects endpoints.
 - It identifies CRUD-like operations (list, get by id, create, update, delete).
 - It maps request/response schemas.
-- A `screens.json` file is created in the output folder.
-- Two JSON folders are created: `generated/` (auto-created files) and `override/` (your manual edits that should be preserved on regeneration).
+- If your project has a `src/` folder, GenerateUI creates `src/generate-ui/`.
+- Otherwise it creates `generate-ui/` next to your OpenAPI file.
+- Inside it you get `generated/`, `overlays/`, `screens.json`, `routes.json`, and `routes.gen.ts`.
 
 What you should review now:
 
@@ -80,9 +81,7 @@ Tip: this is the best moment to adjust naming and structure before generating co
 ## 2) Generate Angular code from `screens.json`
 
 ```bash
-generate-ui angular \
-  --schemas /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/assets/generate-ui \
-  --features /Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/features
+generate-ui angular
 ```
 
 What happens after this command:
@@ -103,6 +102,24 @@ What you should review now:
 
 Note:
 If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
+
+Defaults:
+- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
+- `--features` defaults to `./src/app/features` when it exists, otherwise `./frontend/src/app/features` or `./features`
+
+Optional paths:
+
+```bash
+generate-ui angular \
+  --schemas /path/to/generate-ui \
+  --features /path/to/angular/features
+```
+
+Custom output folder for `generate`:
+
+```bash
+generate-ui generate --openapi youropenapi.yaml --output /path/to/generate-ui
+```
 
 ## Login (Dev plan)
 
@@ -125,17 +142,16 @@ Telemetry can be disabled by setting `telemetry=false` in `~/.generateui/config.
 
 GenerateUI usually creates route files such as:
 
-- `generated.routes.ts`
-- or per feature: `users.routes.ts`, `orders.routes.ts`
+- `src/generate-ui/routes.gen.ts` or `frontend/src/generate-ui/routes.gen.ts` or `generate-ui/routes.gen.ts`
 
 Example (Angular Router):
 
 ```ts
-import { GENERATED_ROUTES } from './app/generated/generated.routes';
+import { generatedRoutes } from '../generate-ui/routes.gen';
 
 export const routes = [
   // ...your existing routes
-  ...GENERATED_ROUTES
+  ...generatedRoutes
 ];
 ```
 
@@ -148,20 +164,21 @@ Things to pay attention to:
 ## Example Generated Structure
 
 ```txt
-src/app/generated/
+src/generate-ui/ or frontend/src/generate-ui/ or generate-ui/
+  generated/
+  overlays/
+  routes.json
+  routes.gen.ts
+  screens.json
+frontend/src/app/features/
   users/
-    users-list.component.ts
-    users-form.component.ts
-    users.routes.ts
-    users.service.ts
-    users.types.ts
+    users.component.ts
+    users.service.gen.ts
+    users.gen.ts
   orders/
-    orders-list.component.ts
-    orders-form.component.ts
-    orders.routes.ts
-    orders.service.ts
-    orders.types.ts
-  generated.routes.ts
+    orders.component.ts
+    orders.service.gen.ts
+    orders.gen.ts
 ```
 
 ## After Generation: How to Customize Safely
@@ -176,9 +193,9 @@ Rule of thumb: the generated code is yours — generate once, then evolve freely
 
 ## Overrides and Regeneration Behavior
 
-You can edit files inside `override/` to customize labels, placeholders, hints, and other details. When your API changes and you regenerate, GenerateUI updates what is safe to change from the OpenAPI, but preserves what you defined in `override/` to avoid breaking your flow.
+You can edit files inside `overlays/` to customize labels, placeholders, hints, and other details. When your API changes and you regenerate, GenerateUI updates what is safe to change from the OpenAPI, but preserves what you defined in `overlays/` to avoid breaking your flow.
 
-Even after the Angular TypeScript files are generated, changes you make in `override/` will be mirrored the next time you regenerate.
+Even after the Angular TypeScript files are generated, changes you make in `overlays/` will be mirrored the next time you regenerate.
 
 ## Common Issues and Fixes
 

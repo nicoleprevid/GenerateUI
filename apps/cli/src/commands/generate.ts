@@ -6,6 +6,7 @@ import { mergeScreen } from '../generators/screen.merge'
 import { getPermissions } from '../license/permissions'
 import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
 import { trackCommand } from '../telemetry'
+import { updateUserConfig } from '../runtime/user-config'
 
 interface GeneratedRoute {
   path: string
@@ -14,6 +15,7 @@ interface GeneratedRoute {
 
 export async function generate(options: {
   openapi: string
+  output?: string
   debug?: boolean
   telemetryEnabled: boolean
 }) {
@@ -33,17 +35,18 @@ export async function generate(options: {
   /**
    * Onde o Angular consome os arquivos
    */
-  const generateUiRoot = path.join(
+  const generateUiRoot = resolveGenerateUiRoot(
     projectRoot,
-    'frontend',
-    'src',
-    'app',
-    'assets',
-    'generate-ui'
+    options.output
   )
 
   const generatedDir = path.join(generateUiRoot, 'generated')
   const overlaysDir = path.join(generateUiRoot, 'overlays')
+
+  updateUserConfig(config => ({
+    ...config,
+    lastSchemasPath: generateUiRoot
+  }))
 
   fs.mkdirSync(generatedDir, { recursive: true })
   fs.mkdirSync(overlaysDir, { recursive: true })
@@ -206,6 +209,27 @@ export async function generate(options: {
   }
 
   console.log('✔ Routes generated')
+}
+
+function resolveGenerateUiRoot(
+  projectRoot: string,
+  output?: string
+) {
+  if (output) {
+    return path.resolve(process.cwd(), output)
+  }
+
+  const srcRoot = path.join(projectRoot, 'src')
+  if (fs.existsSync(srcRoot)) {
+    return path.join(srcRoot, 'generate-ui')
+  }
+
+  const frontendSrcRoot = path.join(projectRoot, 'frontend', 'src')
+  if (fs.existsSync(frontendSrcRoot)) {
+    return path.join(frontendSrcRoot, 'generate-ui')
+  }
+
+  return path.join(projectRoot, 'generate-ui')
 }
 
 function mergeParameters(

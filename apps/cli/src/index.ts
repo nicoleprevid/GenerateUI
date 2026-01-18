@@ -20,12 +20,17 @@ program
   .command('generate')
   .description('Generate screen schemas from OpenAPI')
   .requiredOption('-o, --openapi <path>', 'OpenAPI file')
+  .option(
+    '--output <path>',
+    'Output directory for generate-ui (default: ./src/generate-ui or ./generate-ui)'
+  )
   .option('-d, --debug', 'Explain merge decisions')
   .action(async (options) => {
     const { telemetry } = program.opts<{ telemetry: boolean }>()
     try {
       await generate({
         openapi: options.openapi,
+        output: options.output,
         debug: options.debug,
         telemetryEnabled: telemetry
       })
@@ -40,14 +45,11 @@ program
 program
   .command('angular')
   .description('Generate Angular code from screen schemas')
-  .requiredOption(
+  .option(
     '-s, --schemas <path>',
     'Directory containing generate-ui (with overlays/)'
   )
-  .requiredOption(
-    '-f, --features <path>',
-    'Angular features output directory'
-  )
+  .option('-f, --features <path>', 'Angular features output directory')
   .action(async (options) => {
     const { telemetry } = program.opts<{ telemetry: boolean }>()
     try {

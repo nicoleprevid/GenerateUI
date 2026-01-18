@@ -3,19 +3,25 @@ import path from 'path'
 import { generateFeature } from '../generators/angular/feature.generator'
 import { generateRoutes } from '../generators/angular/routes.generator'
 import { trackCommand } from '../telemetry'
+import { loadUserConfig } from '../runtime/user-config'
 
 export async function angular(options: {
-  schemasPath: string
-  featuresPath: string
+  schemasPath?: string
+  featuresPath?: string
   telemetryEnabled: boolean
 }) {
   void trackCommand('angular', options.telemetryEnabled)
 
+  const featuresRoot = resolveFeaturesRoot(options.featuresPath)
+  const schemasRoot = resolveSchemasRoot(
+    options.schemasPath,
+    featuresRoot
+  )
+
   /**
    * Onde estão os schemas
-   * Ex: frontend/src/app/assets/generate-ui
+   * Ex: generate-ui
    */
-  const schemasRoot = path.resolve(process.cwd(), options.schemasPath)
   const overlaysDir = path.join(schemasRoot, 'overlays')
 
   if (!fs.existsSync(overlaysDir)) {
@@ -29,11 +35,6 @@ export async function angular(options: {
   /**
    * Onde gerar as features Angular
    */
-  const featuresRoot = path.resolve(
-    process.cwd(),
-    options.featuresPath
-  )
-
   fs.mkdirSync(featuresRoot, { recursive: true })
 
   const routes: any[] = []
@@ -43,11 +44,86 @@ export async function angular(options: {
       fs.readFileSync(path.join(overlaysDir, file), 'utf-8')
     )
 
-    const route = generateFeature(schema, featuresRoot)
+    const route = generateFeature(schema, featuresRoot, schemasRoot)
     routes.push(route)
   }
 
-  generateRoutes(routes, featuresRoot)
+  generateRoutes(routes, featuresRoot, schemasRoot)
 
   console.log(`✔ Angular features generated at ${featuresRoot}`)
+}
+
+function resolveSchemasRoot(
+  value: string | undefined,
+  featuresRoot: string
+) {
+  if (value) {
+    return path.resolve(process.cwd(), value)
+  }
+
+  const config = loadUserConfig()
+  if (config?.lastSchemasPath) {
+    const resolved = path.resolve(config.lastSchemasPath)
+    if (fs.existsSync(path.join(resolved, 'overlays'))) {
+      return resolved
+    }
+  }
+
+  const inferred = inferSchemasRootFromFeatures(featuresRoot)
+  if (inferred) return inferred
+
+  return resolveDefaultSchemasRoot()
+}
+
+function resolveFeaturesRoot(value?: string) {
+  if (value) {
+    return path.resolve(process.cwd(), value)
+  }
+
+  const defaultApp = path.resolve(
+    process.cwd(),
+    'src',
+    'app',
+    'features'
+  )
+
+  if (fs.existsSync(defaultApp)) {
+    return defaultApp
+  }
+
+  const defaultFrontend = path.resolve(
+    process.cwd(),
+    'frontend',
+    'src',
+    'app',
+    'features'
+  )
+  if (fs.existsSync(defaultFrontend)) {
+    return defaultFrontend
+  }
+
+  return path.resolve(process.cwd(), 'features')
+}
+
+function inferSchemasRootFromFeatures(featuresRoot: string) {
+  const candidate = path.resolve(
+    featuresRoot,
+    '../../..',
+    'generate-ui'
+  )
+  if (fs.existsSync(path.join(candidate, 'overlays'))) {
+    return candidate
+  }
+  return null
+}
+
+function resolveDefaultSchemasRoot() {
+  const cwd = process.cwd()
+  if (fs.existsSync(path.join(cwd, 'src'))) {
+    return path.join(cwd, 'src', 'generate-ui')
+  }
+  if (fs.existsSync(path.join(cwd, 'frontend', 'src'))) {
+    return path.join(cwd, 'frontend', 'src', 'generate-ui')
+  }
+  return path.join(cwd, 'generate-ui')
 }
