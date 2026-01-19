@@ -105,7 +105,7 @@ If your project uses custom routing, standalone components, or advanced layouts,
 
 Defaults:
 - `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
-- `--features` defaults to `./src/app/features` when it exists, otherwise `./frontend/src/app/features` or `./features`
+- `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
 
 Optional paths:
 

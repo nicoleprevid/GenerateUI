@@ -77,32 +77,24 @@ function resolveSchemasRoot(
 
 function resolveFeaturesRoot(value?: string) {
   if (value) {
-    return path.resolve(process.cwd(), value)
+    const resolved = path.resolve(process.cwd(), value)
+    const isSrcApp =
+      path.basename(resolved) === 'app' &&
+      path.basename(path.dirname(resolved)) === 'src'
+    if (isSrcApp) {
+      return path.join(resolved, 'features')
+    }
+    return resolved
   }
 
-  const defaultApp = path.resolve(
-    process.cwd(),
-    'src',
-    'app',
-    'features'
-  )
-
-  if (fs.existsSync(defaultApp)) {
-    return defaultApp
+  const srcAppRoot = path.resolve(process.cwd(), 'src', 'app')
+  if (!fs.existsSync(srcAppRoot)) {
+    throw new Error(
+      'Default features path not found: ./src/app. Provide --features /path/to/src/app (or /path/to/src/app/features)'
+    )
   }
 
-  const defaultFrontend = path.resolve(
-    process.cwd(),
-    'frontend',
-    'src',
-    'app',
-    'features'
-  )
-  if (fs.existsSync(defaultFrontend)) {
-    return defaultFrontend
-  }
-
-  return path.resolve(process.cwd(), 'features')
+  return path.join(srcAppRoot, 'features')
 }
 
 function inferSchemasRootFromFeatures(featuresRoot: string) {
