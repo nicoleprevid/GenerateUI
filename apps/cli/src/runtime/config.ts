@@ -7,13 +7,13 @@ export function getCliVersion() {
 export function getApiBaseUrl() {
   return (
     process.env.GENERATEUI_API_BASE_URL?.trim() ||
-    'http://localhost:3000'
+    'https://generateuibackend-production.up.railway.app'
   )
 }
 
 export function getWebAuthUrl() {
   return (
     process.env.GENERATEUI_WEB_AUTH_URL?.trim() ||
-    'http://localhost:3001'
+    'https://generateuibackend-production.up.railway.app'
   )
 }

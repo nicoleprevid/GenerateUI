@@ -1,0 +1,144 @@
+openapi: 3.0.3
+
+info:
+  title: REST Countries API (Unofficial – Adjusted)
+  version: 1.0.1
+  description: |
+    Especificação OpenAPI ajustada para a REST Countries API,
+    considerando o uso obrigatório do parâmetro `fields`
+    para evitar erro no endpoint /all.
+
+servers:
+  - url: https://restcountries.com/v3.1
+    description: REST Countries Public API
+
+tags:
+  - name: Countries
+    description: Dados de países
+
+paths:
+
+  /all:
+    get:
+      tags:
+        - Countries
+      summary: Listar todos os países
+      description: |
+        Retorna todos os países.
+        O parâmetro `fields` é obrigatório para evitar erro da API.
+      parameters:
+        - name: fields
+          in: query
+          required: true
+          description: Lista de campos a serem retornados, separados por vírgula
+          schema:
+            type: string
+            example: name,population,region,flags
+      responses:
+        "200":
+          description: Lista de países
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Country'
+        "400":
+          description: Parâmetro fields ausente ou inválido
+
+  /name/{name}:
+    get:
+      tags:
+        - Countries
+      summary: Buscar país por nome
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fields
+          in: query
+          required: false
+          description: Campos retornados na resposta
+          schema:
+            type: string
+            example: name,population,region,flags
+      responses:
+        "200":
+          description: País encontrado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Country'
+        "404":
+          description: País não encontrado
+
+  /region/{region}:
+    get:
+      tags:
+        - Countries
+      summary: Buscar países por região
+      parameters:
+        - name: region
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fields
+          in: query
+          required: false
+          schema:
+            type: string
+            example: name,population,region,flags
+      responses:
+        "200":
+          description: Lista de países da região
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Country'
+
+components:
+  schemas:
+
+    Country:
+      type: object
+      properties:
+        name:
+          type: object
+          properties:
+            common:
+              type: string
+            official:
+              type: string
+        population:
+          type: integer
+          example: 212559409
+        region:
+          type: string
+          example: Americas
+        subregion:
+          type: string
+          example: South America
+        capital:
+          type: array
+          items:
+            type: string
+        flags:
+          type: object
+          properties:
+            png:
+              type: string
+              example: https://flagcdn.com/w320/br.png
+            svg:
+              type: string
+              example: https://flagcdn.com/br.svg
+        languages:
+          type: object
+          additionalProperties:
+            type: string

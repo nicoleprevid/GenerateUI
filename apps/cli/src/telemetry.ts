@@ -5,13 +5,14 @@ import {
   saveUserConfig
 } from './runtime/user-config'
 import { loadDeviceIdentity } from './license/device'
+import { loadToken } from './license/token'
 
 export type TelemetryCommand = 'generate' | 'angular' | 'login' | 'help'
 export type TelemetryEvent = 'first_run' | 'command_run' | 'login'
 
 const TELEMETRY_URL =
   process.env.GENERATEUI_TELEMETRY_URL?.trim() ||
-  'https://api.generateui.dev/events'
+  'https://api.generateui.dev/telemetry'
 const TELEMETRY_TIMEOUT_MS = 1000
 
 function getOsName() {
@@ -22,6 +23,7 @@ function loadOrCreateConfig(): {
   config: {
     installationId: string
     telemetry?: boolean
+    lastLoginEmail?: string
   }
   isNew: boolean
 } {
@@ -68,7 +70,8 @@ function loadOrCreateConfig(): {
   return {
     config: {
       installationId,
-      telemetry: config.telemetry
+      telemetry: config.telemetry,
+      lastLoginEmail: config.lastLoginEmail
     },
     isNew
   }
@@ -83,6 +86,7 @@ function isTelemetryEnabled(
 }
 
 async function sendEvent(payload: Record<string, unknown>) {
+  const token = loadToken()
   const controller = new AbortController()
   const timeout = setTimeout(
     () => controller.abort(),
@@ -92,7 +96,10 @@ async function sendEvent(payload: Record<string, unknown>) {
     await fetch(TELEMETRY_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(token
+          ? { Authorization: `Bearer ${token.accessToken}` }
+          : {})
       },
       body: JSON.stringify(payload),
       signal: controller.signal
@@ -119,6 +126,7 @@ export async function trackCommand(
       event: 'first_run',
       installationId: config.installationId,
       deviceId: device.deviceId,
+      deviceCreatedAt: device.createdAt,
       os: getOsName(),
       arch: process.arch,
       cliVersion: getCliVersion()
@@ -128,7 +136,9 @@ export async function trackCommand(
   await sendEvent({
     event: 'command_run',
     installationId: config.installationId,
+    deviceId: device.deviceId,
     command,
+    email: config.lastLoginEmail ?? '',
     cliVersion: getCliVersion()
   })
 }
@@ -141,9 +151,11 @@ export async function trackLogin(
   const enabled = isTelemetryEnabled(cliEnabled, config)
   if (!enabled) return
 
+  const device = loadDeviceIdentity()
   await sendEvent({
     event: 'login',
     installationId: config.installationId,
+    deviceId: device.deviceId,
     email: email ?? '',
     cliVersion: getCliVersion()
   })

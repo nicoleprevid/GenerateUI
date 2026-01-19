@@ -2,6 +2,7 @@ import http from 'http'
 import { URL } from 'url'
 import { createInterface } from 'readline/promises'
 import { getApiBaseUrl, getWebAuthUrl } from '../runtime/config'
+import { updateUserConfig } from '../runtime/user-config'
 import { openBrowser } from '../runtime/open-browser'
 import { saveToken } from '../license/token'
 import { fetchPermissions } from '../license/permissions'
@@ -22,6 +23,12 @@ export async function login(options: { telemetryEnabled: boolean }) {
   }
 
   const email = await promptEmail()
+  if (email) {
+    updateUserConfig((config) => ({
+      ...config,
+      lastLoginEmail: email
+    }))
+  }
   await trackLogin(email, options.telemetryEnabled)
 
   console.log('✔ Login completo')
@@ -49,6 +56,7 @@ async function waitForLogin(): Promise<{
   expiresAt: string
 }> {
   return new Promise((resolve, reject) => {
+    let loginUrl = ''
     const server = http.createServer((req, res) => {
       const requestUrl = req.url || '/'
       if (!requestUrl.startsWith('/callback')) {
@@ -143,7 +151,10 @@ async function waitForLogin(): Promise<{
 
     const timeout = setTimeout(() => {
       server.close()
-      reject(new Error('Login timed out'))
+      const help = loginUrl
+        ? ` Ensure the login page is reachable and try again: ${loginUrl}`
+        : ` Ensure ${getWebAuthUrl()} and ${getApiBaseUrl()} are reachable.`
+      reject(new Error(`Login timed out.${help}`))
     }, LOGIN_TIMEOUT_MS)
 
     server.listen(0, () => {
@@ -159,7 +170,9 @@ async function waitForLogin(): Promise<{
       url.searchParams.set('redirect_uri', redirectUri)
       url.searchParams.set('api_base', getApiBaseUrl())
 
-      openBrowser(url.toString())
+      loginUrl = url.toString()
+      console.log(`Open this URL to finish login: ${loginUrl}`)
+      openBrowser(loginUrl)
     })
   })
 }

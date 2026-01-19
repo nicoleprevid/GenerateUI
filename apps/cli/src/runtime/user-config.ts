@@ -6,6 +6,7 @@ export type UserConfig = {
   installationId?: string
   telemetry?: boolean
   lastSchemasPath?: string
+  lastLoginEmail?: string
 }
 
 export function getUserConfigPath() {
