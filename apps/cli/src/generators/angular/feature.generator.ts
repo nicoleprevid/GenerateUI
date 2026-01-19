@@ -536,8 +536,11 @@ export class ${name}Service {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
 }
 
 .actions {
@@ -545,6 +548,7 @@ export class ${name}Service {
   justify-content: flex-end;
   gap: 14px;
   margin-top: 20px;
+  flex-wrap: wrap;
 }
 
 .result {
@@ -645,6 +649,21 @@ export class ${name}Service {
   object-fit: cover;
   border-radius: 6px;
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.16);
+}
+
+@media (max-width: 720px) {
+  :host {
+    padding: 18px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
 }
 `
   )
@@ -838,7 +857,7 @@ function buildComponentHtml(options: {
 
           <textarea
             *ngIf="isTextarea(field)"
-            rows="4"
+            rows="3"
             [formControlName]="field.name"
             [placeholder]="field.placeholder || field.label || field.name"
             [class.invalid]="isInvalid(field)"
@@ -1070,8 +1089,8 @@ export class UiFieldComponent {
 
 .ui-field {
   display: grid;
-  gap: 10px;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   color: #374151;
 }
 
@@ -1121,12 +1140,12 @@ export class UiFieldComponent {
 :host ::ng-deep textarea,
 :host ::ng-deep select {
   width: 100%;
-  min-height: 3.4rem;
-  border-radius: 10px;
+  min-height: 2.6rem;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #ffffff;
-  padding: 0.9rem 1.1rem;
-  font-size: 15px;
+  padding: 0.6rem 0.8rem;
+  font-size: 14px;
   font-weight: 500;
   box-shadow: none;
   outline: none;
@@ -1153,12 +1172,17 @@ export class UiFieldComponent {
 }
 
 :host ::ng-deep select {
-  padding-right: 2.6rem;
+  padding-right: 2.2rem;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8' fill='none'><path d='M1 1.5L7 6.5L13 1.5' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 0.9rem center;
+  background-position: right 0.7rem center;
   background-size: 14px 8px;
   appearance: none;
+}
+
+:host ::ng-deep textarea {
+  min-height: 5.5rem;
+  resize: vertical;
 }
 
 :host ::ng-deep input[type='checkbox'] {
