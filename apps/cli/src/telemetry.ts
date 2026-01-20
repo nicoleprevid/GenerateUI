@@ -12,7 +12,7 @@ export type TelemetryEvent = 'first_run' | 'command_run' | 'login'
 
 const TELEMETRY_URL =
   process.env.GENERATEUI_TELEMETRY_URL?.trim() ||
-  'https://api.generateui.dev/telemetry'
+  'https://api.generateui.dev/events'
 const TELEMETRY_TIMEOUT_MS = 1000
 
 function getOsName() {
@@ -133,11 +133,12 @@ export async function trackCommand(
     })
   }
 
+  if (command === 'login') return
+
   await sendEvent({
-    event: 'command_run',
+    event: command,
     installationId: config.installationId,
     deviceId: device.deviceId,
-    command,
     email: config.lastLoginEmail ?? '',
     cliVersion: getCliVersion()
   })
