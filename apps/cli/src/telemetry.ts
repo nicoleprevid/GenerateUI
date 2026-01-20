@@ -11,8 +11,7 @@ export type TelemetryCommand = 'generate' | 'angular' | 'login' | 'help'
 export type TelemetryEvent = 'first_run' | 'command_run' | 'login'
 
 const TELEMETRY_URL =
-  process.env.GENERATEUI_TELEMETRY_URL?.trim() ||
-  'https://api.generateui.dev/events'
+  'https://generateuibackend-production.up.railway.app/events'
 const TELEMETRY_TIMEOUT_MS = 1000
 
 function getOsName() {
