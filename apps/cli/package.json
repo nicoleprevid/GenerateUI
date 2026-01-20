@@ -1,6 +1,6 @@
 {
   "name": "generate-ui-cli",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Generate UI from OpenAPI",
   "license": "MIT",
   "repository": {
