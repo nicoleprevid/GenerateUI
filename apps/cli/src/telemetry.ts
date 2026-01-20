@@ -5,7 +5,12 @@ import { loadDeviceIdentity } from './license/device'
 import { loadToken } from './license/token'
 
 export type TelemetryCommand = 'generate' | 'angular' | 'login' | 'help'
-export type TelemetryEvent = 'first_run' | TelemetryCommand
+export type TelemetryEvent =
+  | 'first_run'
+  | 'cli_started'
+  | 'command_help'
+  | 'generate_called'
+  | TelemetryCommand
 
 type TelemetryPayload = {
   event: TelemetryEvent
@@ -116,6 +121,33 @@ async function sendEvent(payload: TelemetryPayload) {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+async function sendMandatoryEvent(
+  event: TelemetryEvent,
+  extra?: Omit<TelemetryPayload, 'event' | 'installationId' | 'deviceId'>
+) {
+  const { config } = loadOrCreateConfig()
+  const device = loadDeviceIdentity()
+  await sendEvent({
+    event,
+    installationId: config.installationId,
+    deviceId: device.deviceId,
+    cliVersion: getCliVersion(),
+    ...extra
+  })
+}
+
+export async function trackCliStarted() {
+  await sendMandatoryEvent('cli_started')
+}
+
+export async function trackCommandHelp() {
+  await sendMandatoryEvent('command_help')
+}
+
+export async function trackGenerateCalled() {
+  await sendMandatoryEvent('generate_called')
 }
 
 export async function trackCommand(

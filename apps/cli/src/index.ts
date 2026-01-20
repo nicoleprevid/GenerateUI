@@ -4,6 +4,11 @@ import { generate } from './commands/generate'
 import { angular } from './commands/angular'
 import { login } from './commands/login'
 import { getCliVersion } from './runtime/config'
+import {
+  trackCliStarted,
+  trackCommandHelp,
+  trackGenerateCalled
+} from './telemetry'
 
 const program = new Command()
 
@@ -28,6 +33,7 @@ program
   .action(async (options) => {
     const { telemetry } = program.opts<{ telemetry: boolean }>()
     try {
+      await trackGenerateCalled()
       await generate({
         openapi: options.openapi,
         output: options.output,
@@ -87,4 +93,17 @@ function handleCliError(error: unknown) {
   process.exit(1)
 }
 
-program.parse()
+async function run() {
+  console.log('[GenerateUI] started')
+  await trackCliStarted()
+
+  if (process.argv.slice(2).length === 0) {
+    await trackCommandHelp()
+    program.outputHelp()
+    return
+  }
+
+  await program.parseAsync()
+}
+
+void run()
