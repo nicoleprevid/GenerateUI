@@ -1,14 +1,22 @@
 import { randomUUID } from 'crypto'
 import { getCliVersion } from './runtime/config'
-import {
-  loadUserConfig,
-  saveUserConfig
-} from './runtime/user-config'
+import { loadUserConfig, saveUserConfig } from './runtime/user-config'
 import { loadDeviceIdentity } from './license/device'
 import { loadToken } from './license/token'
 
 export type TelemetryCommand = 'generate' | 'angular' | 'login' | 'help'
-export type TelemetryEvent = 'first_run' | 'command_run' | 'login'
+export type TelemetryEvent = 'first_run' | TelemetryCommand
+
+type TelemetryPayload = {
+  event: TelemetryEvent
+  installationId: string
+  deviceId: string
+  email?: string | null
+  cliVersion?: string
+  deviceCreatedAt?: string
+  os?: string
+  arch?: string
+}
 
 const TELEMETRY_URL =
   'https://generateuibackend-production.up.railway.app/events'
@@ -16,6 +24,12 @@ const TELEMETRY_TIMEOUT_MS = 1000
 
 function getOsName() {
   return process.platform
+}
+
+function normalizeEmail(email?: string | null) {
+  if (!email) return null
+  const trimmed = email.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function loadOrCreateConfig(): {
@@ -54,8 +68,7 @@ function loadOrCreateConfig(): {
     saveUserConfig(config)
   }
 
-  const installationId =
-    config.installationId ?? randomUUID()
+  const installationId = config.installationId ?? randomUUID()
 
   if (installationId !== config.installationId) {
     shouldWrite = true
@@ -84,21 +97,16 @@ function isTelemetryEnabled(
   return config.telemetry !== false
 }
 
-async function sendEvent(payload: Record<string, unknown>) {
+async function sendEvent(payload: TelemetryPayload) {
   const token = loadToken()
   const controller = new AbortController()
-  const timeout = setTimeout(
-    () => controller.abort(),
-    TELEMETRY_TIMEOUT_MS
-  )
+  const timeout = setTimeout(() => controller.abort(), TELEMETRY_TIMEOUT_MS)
   try {
     await fetch(TELEMETRY_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token
-          ? { Authorization: `Bearer ${token.accessToken}` }
-          : {})
+        ...(token ? { Authorization: `Bearer ${token.accessToken}` } : {})
       },
       body: JSON.stringify(payload),
       signal: controller.signal
@@ -119,6 +127,7 @@ export async function trackCommand(
   if (!enabled) return
 
   const device = loadDeviceIdentity()
+  if (!device?.deviceId) return
 
   if (isNew) {
     await sendEvent({
@@ -138,25 +147,24 @@ export async function trackCommand(
     event: command,
     installationId: config.installationId,
     deviceId: device.deviceId,
-    email: config.lastLoginEmail ?? '',
+    email: normalizeEmail(config.lastLoginEmail),
     cliVersion: getCliVersion()
   })
 }
 
-export async function trackLogin(
-  email: string | null,
-  cliEnabled: boolean
-) {
+export async function trackLogin(email: string | null, cliEnabled: boolean) {
   const { config } = loadOrCreateConfig()
   const enabled = isTelemetryEnabled(cliEnabled, config)
   if (!enabled) return
 
   const device = loadDeviceIdentity()
+  if (!device?.deviceId) return
+
   await sendEvent({
     event: 'login',
     installationId: config.installationId,
     deviceId: device.deviceId,
-    email: email ?? '',
+    email: normalizeEmail(email),
     cliVersion: getCliVersion()
   })
 }

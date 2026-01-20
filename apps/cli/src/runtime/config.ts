@@ -6,12 +6,12 @@ export function getCliVersion() {
 
 export function getApiBaseUrl() {
   return (
-    'https://generateuibackend-production.up.railway.app/events'
+    'https://generateuibackend-production.up.railway.app'
   )
 }
 
 export function getWebAuthUrl() {
   return (
-    'https://generateuibackend-production.up.railway.app/events'
+    'https://generateuibackend-production.up.railway.app'
   )
 }
