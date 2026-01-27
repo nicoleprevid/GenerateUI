@@ -23,7 +23,8 @@ type MenuConfig = {
 
 export function generateMenu(schemasRoot: string) {
   const menu =
-    loadMenuConfig(schemasRoot) ?? {
+    loadMenuConfig(schemasRoot) ??
+    buildMenuFromRoutes(loadRoutesConfig(schemasRoot)) ?? {
       groups: [],
       ungrouped: []
     }
@@ -87,6 +88,16 @@ function loadMenuConfig(schemasRoot: string): MenuConfig | null {
   return null
 }
 
+function loadRoutesConfig(schemasRoot: string) {
+  const routesPath = path.join(schemasRoot, 'routes.json')
+  if (!fs.existsSync(routesPath)) return null
+  try {
+    return JSON.parse(fs.readFileSync(routesPath, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
 function normalizeMenu(value: any): MenuConfig {
   return {
     groups: Array.isArray(value?.groups)
@@ -117,4 +128,79 @@ function normalizeItem(value: any): MenuItem {
     hidden: Boolean(value?.hidden) || undefined,
     icon: value?.icon ? String(value.icon) : undefined
   }
+}
+
+function buildMenuFromRoutes(routes: any[] | null): MenuConfig | null {
+  if (!Array.isArray(routes) || routes.length === 0) return null
+
+  const groups: MenuGroup[] = []
+  const ungrouped: MenuItem[] = []
+  const groupMap = new Map<string, MenuGroup>()
+
+  for (const route of routes) {
+    if (!route?.path || !route?.operationId) continue
+
+    const item: MenuItem = {
+      id: String(route.operationId),
+      label: String(route.label ?? route.operationId),
+      route: normalizeRoutePath(
+        String(route.path ?? route.operationId ?? '')
+      )
+    }
+
+    const rawGroup = route.group ? String(route.group) : ''
+    if (!rawGroup) {
+      ungrouped.push(item)
+      continue
+    }
+
+    const groupId = toKebab(rawGroup)
+    let group = groupMap.get(groupId)
+    if (!group) {
+      group = {
+        id: groupId,
+        label: toLabel(rawGroup),
+        items: []
+      }
+      groupMap.set(groupId, group)
+      groups.push(group)
+    }
+    group.items.push(item)
+  }
+
+  return { groups, ungrouped }
+}
+
+function toKebab(value: string) {
+  return String(value)
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[_\\s]+/g, '-')
+    .toLowerCase()
+}
+
+function toLabel(value: string) {
+  return String(value)
+    .replace(/[_-]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\\b\\w/g, char => char.toUpperCase())
+}
+
+function normalizeRoutePath(value: string) {
+  if (!value) return value
+  if (value.includes('/')) return value.replace(/^\//, '')
+  const pascal = toPascalCase(value)
+  return toRouteSegment(pascal)
+}
+
+function toRouteSegment(value: string) {
+  if (!value) return value
+  return value[0].toLowerCase() + value.slice(1)
+}
+
+function toPascalCase(value: string) {
+  return String(value)
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join('')
 }

@@ -198,7 +198,7 @@ function injectDefaultRoute(appRoot: string, value: string) {
   if (!fs.existsSync(routesPath)) return
 
   let content = fs.readFileSync(routesPath, 'utf-8')
-  const route = value.replace(/^\//, '')
+  const route = normalizeRoutePath(value)
   const insertion = `  { path: '', pathMatch: 'full', redirectTo: '${route}' },\n`
 
   if (!content.trim().length) {
@@ -277,13 +277,17 @@ function injectMenuLayout(
   if (!tsRaw.includes('UiMenuComponent')) {
     tsRaw = tsRaw.replace(
       /import\s+\{\s*([^}]+)\s*\}\s+from\s+['"]@angular\/router['"];/,
-      (match, imports) =>
+      (match) =>
         `${match}\nimport { UiMenuComponent } from './ui/ui-menu/ui-menu.component';`
     )
   }
 
   if (tsRaw.includes('imports: [')) {
-    tsRaw = tsRaw.replace(/imports:\s*\[/, match => `${match}UiMenuComponent, `)
+    tsRaw = tsRaw.replace(
+      /imports:\s*\[/,
+      match => `${match}RouterOutlet, UiMenuComponent, `
+    )
+    tsRaw = tsRaw.replace(/UiMenuComponent,\s*UiMenuComponent,\s*/g, 'UiMenuComponent, ')
   }
 
   if (!tsRaw.includes('appTitle')) {
@@ -321,4 +325,25 @@ function injectMenuLayout(
 
 function escapeString(value: string) {
   return String(value).replace(/'/g, "\\'")
+}
+
+function normalizeRoutePath(value: string) {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return trimmed
+  if (trimmed.includes('/')) return trimmed.replace(/^\//, '')
+  const pascal = toPascalCase(trimmed)
+  return toRouteSegment(pascal)
+}
+
+function toRouteSegment(value: string) {
+  if (!value) return value
+  return value[0].toLowerCase() + value.slice(1)
+}
+
+function toPascalCase(value: string) {
+  return String(value)
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join('')
 }

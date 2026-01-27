@@ -130,7 +130,8 @@ Example:
 
 Notes:
 - If `menu.autoInject` is `false`, the menu layout is not injected.
-- `defaultRoute` must exist in `routes.gen.ts`.
+- `defaultRoute` must match a path in `routes.gen.ts` (the same path used by the router).
+- You can provide either the final route path or an `operationId`; the generator normalizes it to the correct path.
 
 Optional paths:
 
