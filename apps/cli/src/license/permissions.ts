@@ -111,7 +111,9 @@ export async function getPermissions(): Promise<PermissionResponse> {
     }
 
     if (tokenPresent) {
-      throw new Error('Please reconnect to verify your license.')
+      throw new Error(
+        'Login concluído, mas não foi possível validar sua licença agora. Verifique sua conexão com a API e tente novamente.'
+      )
     }
 
     return FREE_DEFAULT

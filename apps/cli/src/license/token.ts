@@ -26,15 +26,32 @@ export function loadToken(): AccessToken | null {
     ) as AccessToken
 
     if (!parsed.accessToken || !parsed.expiresAt) return null
-    const expiresAt = new Date(parsed.expiresAt).getTime()
-    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
+    const expiresAt = normalizeExpiresAt(parsed.expiresAt)
+    if (!expiresAt || expiresAt <= Date.now()) {
       return null
     }
 
-    return parsed
+    return {
+      ...parsed,
+      expiresAt: new Date(expiresAt).toISOString()
+    }
   } catch {
     return null
   }
+}
+
+function normalizeExpiresAt(value: string) {
+  const trimmed = String(value).trim()
+  if (!trimmed.length) return null
+
+  const asNumber = Number(trimmed)
+  if (Number.isFinite(asNumber)) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber
+  }
+
+  const parsed = new Date(trimmed).getTime()
+  if (Number.isNaN(parsed)) return null
+  return parsed
 }
 
 export function saveToken(token: AccessToken) {

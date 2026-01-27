@@ -28,7 +28,7 @@ export function generateFeature(
   fs.mkdirSync(featureDir, { recursive: true })
 
   const appRoot = path.resolve(root, '..')
-  ensureUiComponents(appRoot)
+  ensureUiComponents(appRoot, schemasRoot)
 
   const method = String(schema.api.method || '').toLowerCase()
   const endpoint = String(schema.api.endpoint || '')
@@ -92,7 +92,7 @@ export function generateFeature(
     componentPath,
     `
 import { Component } from '@angular/core'
-import { JsonPipe, NgFor, NgIf } from '@angular/common'
+import { CommonModule } from '@angular/common'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
 import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
 import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
@@ -108,9 +108,7 @@ import screenSchema from '${schemaImportPath}'
   selector: 'app-${toKebab(name)}',
   standalone: true,
   imports: [
-    NgIf,
-    NgFor,
-    JsonPipe,
+    CommonModule,
     ReactiveFormsModule,
     UiCardComponent,
     UiButtonComponent,
@@ -997,7 +995,7 @@ function httpCallForMethod(method: string) {
   }
 }
 
-function ensureUiComponents(appRoot: string) {
+function ensureUiComponents(appRoot: string, schemasRoot?: string) {
   const uiRoot = path.join(appRoot, 'ui')
   const components = [
     {
@@ -1072,6 +1070,137 @@ export class UiCardComponent {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-family: "Space Mono", "Courier New", monospace;
+}
+`
+    },
+    {
+      name: 'ui-menu',
+      template: '',
+      html: `
+<nav class="ui-menu">
+  <div class="ui-menu__brand">
+    <span class="ui-menu__brand-pill"></span>
+    <span class="ui-menu__brand-title">{{ title }}</span>
+  </div>
+
+  <ng-container *ngFor="let group of menu.groups">
+    <section
+      class="ui-menu__group"
+      *ngIf="!group.hidden && group.items.length"
+    >
+      <h3 class="ui-menu__group-title">{{ group.label }}</h3>
+      <a
+        class="ui-menu__item"
+        *ngFor="let item of group.items"
+        [routerLink]="item.route"
+        routerLinkActive="active"
+        [class.hidden]="item.hidden"
+      >
+        {{ item.label }}
+      </a>
+    </section>
+  </ng-container>
+
+  <section
+    class="ui-menu__group"
+    *ngIf="menu.ungrouped.length"
+  >
+    <h3 class="ui-menu__group-title">Outros</h3>
+    <a
+      class="ui-menu__item"
+      *ngFor="let item of menu.ungrouped"
+      [routerLink]="item.route"
+      routerLinkActive="active"
+      [class.hidden]="item.hidden"
+    >
+      {{ item.label }}
+    </a>
+  </section>
+</nav>
+`,
+      scss: `
+:host {
+  display: block;
+  height: 100%;
+}
+
+.ui-menu {
+  position: sticky;
+  top: 24px;
+  align-self: flex-start;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-card);
+  border-radius: 22px;
+  padding: 22px;
+  min-width: 220px;
+  display: grid;
+  gap: 22px;
+}
+
+.ui-menu__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--bg-ink);
+  font-size: 15px;
+}
+
+.ui-menu__brand-pill {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
+  box-shadow: 0 6px 16px rgba(8, 145, 178, 0.35);
+}
+
+.ui-menu__group {
+  display: grid;
+  gap: 10px;
+}
+
+.ui-menu__group-title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-family: "Space Mono", "Courier New", monospace;
+}
+
+.ui-menu__item {
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  padding: 10px 14px;
+  border-radius: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.ui-menu__item:hover {
+  background: #f1f5f9;
+  transform: translateX(2px);
+}
+
+.ui-menu__item.active {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(8, 145, 178, 0.3);
+}
+
+.ui-menu__item.hidden {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .ui-menu {
+    position: static;
+    width: 100%;
+    min-width: auto;
+  }
 }
 `
     },
@@ -1897,6 +2026,33 @@ export class UiCheckboxComponent {
       return !existing.includes(marker)
     }
 
+    if (component.name === 'ui-menu') {
+      const menuImportPath = schemasRoot
+        ? buildRelativeImportPath(
+            componentDir,
+            path.join(schemasRoot, 'menu.gen')
+          )
+        : './menu.gen'
+      component.template = `
+import { Component, Input } from '@angular/core'
+import { NgFor, NgIf } from '@angular/common'
+import { RouterLink, RouterLinkActive } from '@angular/router'
+import { GeneratedMenu, generatedMenu } from '${menuImportPath}'
+
+@Component({
+  selector: 'ui-menu',
+  standalone: true,
+  imports: [NgIf, NgFor, RouterLink, RouterLinkActive],
+  templateUrl: './ui-menu.component.html',
+  styleUrls: ['./ui-menu.component.scss']
+})
+export class UiMenuComponent {
+  @Input() menu: GeneratedMenu = generatedMenu
+  @Input() title = 'Generate UI'
+}
+`
+    }
+
     if (shouldOverwrite(tsPath, 'infoOpen')) {
       fs.writeFileSync(tsPath, component.template.trimStart())
     }
@@ -1955,6 +2111,15 @@ function buildSchemaImportPath(
     relativePath = `./${relativePath}`
   }
 
+  return relativePath
+}
+
+function buildRelativeImportPath(fromDir: string, targetFile: string) {
+  let relativePath = path.relative(fromDir, targetFile)
+  relativePath = toPosixPath(relativePath)
+  if (!relativePath.startsWith('.')) {
+    relativePath = `./${relativePath}`
+  }
   return relativePath
 }
 

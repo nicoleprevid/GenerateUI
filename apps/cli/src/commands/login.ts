@@ -1,6 +1,6 @@
 import http from 'http'
 import { URL } from 'url'
-import { createInterface } from 'readline/promises'
+import { execSync } from 'child_process'
 import { getApiBaseUrl, getWebAuthUrl } from '../runtime/config'
 import { updateUserConfig } from '../runtime/user-config'
 import { openBrowser } from '../runtime/open-browser'
@@ -16,13 +16,17 @@ export async function login(options: { telemetryEnabled: boolean }) {
   const token = await waitForLogin()
   saveToken(token)
 
+  let permissionsLoaded = false
   try {
     await fetchPermissions()
+    permissionsLoaded = true
   } catch {
-    // Cached permissions will be refreshed on next online command.
+    console.warn(
+      '⚠ Não foi possível validar a licença agora. Verifique sua conexão e rode o comando novamente se necessário.'
+    )
   }
 
-  const email = await promptEmail()
+  const email = resolveLoginEmail()
   if (email) {
     updateUserConfig((config) => ({
       ...config,
@@ -31,23 +35,32 @@ export async function login(options: { telemetryEnabled: boolean }) {
   }
   await trackLogin(email, options.telemetryEnabled)
 
-  console.log('✔ Login completo')
+  console.log(
+    permissionsLoaded
+      ? '✔ Login completo'
+      : '✔ Login completo (verificação pendente)'
+  )
 }
 
-async function promptEmail(): Promise<string | null> {
-  if (!process.stdin.isTTY) return null
+function resolveLoginEmail(): string | null {
+  const envEmail =
+    process.env.GIT_AUTHOR_EMAIL ||
+    process.env.GIT_COMMITTER_EMAIL ||
+    process.env.EMAIL
 
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout
-  })
+  if (envEmail && envEmail.trim().length) {
+    return envEmail.trim()
+  }
 
   try {
-    const value = await rl.question('Email (optional): ')
-    const trimmed = value.trim()
-    return trimmed.length ? trimmed : null
-  } finally {
-    rl.close()
+    const output = execSync('git config --get user.email', {
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+      .toString()
+      .trim()
+    return output.length ? output : null
+  } catch {
+    return null
   }
 }
 
@@ -76,7 +89,7 @@ async function waitForLogin(): Promise<{
       }
 
       const expiresAt =
-        expiresAtParam ||
+        normalizeExpiresAt(expiresAtParam) ||
         new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
       res.writeHead(200, { 'Content-Type': 'text/html' })
@@ -175,4 +188,20 @@ async function waitForLogin(): Promise<{
       openBrowser(loginUrl)
     })
   })
+}
+
+function normalizeExpiresAt(value: string | null) {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed.length) return null
+
+  const asNumber = Number(trimmed)
+  if (Number.isFinite(asNumber)) {
+    const ms = asNumber < 1e12 ? asNumber * 1000 : asNumber
+    return new Date(ms).toISOString()
+  }
+
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
 }

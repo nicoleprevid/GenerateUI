@@ -92,6 +92,7 @@ What happens after this command:
   - a typed API service
   - DTO/types files
   - route definitions
+  - `menu.json` and `menu.gen.ts` (if present in `generate-ui/`)
 
 What you should review now:
 
@@ -106,6 +107,30 @@ If your project uses custom routing, standalone components, or advanced layouts,
 Defaults:
 - `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
 - `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
+
+### generateui-config.json (optional)
+
+If you add a `generateui-config.json` at your project root (or any parent of `src/app`), the Angular generator can:
+
+- inject a sidebar menu layout automatically (when `menu.autoInject` is not `false`)
+- add a default redirect for `/` using `defaultRoute`
+- show a custom app title in the menu (`appTitle`)
+
+Example:
+
+```json
+{
+  "appTitle": "Rick & Morty Admin",
+  "defaultRoute": "GetCharacter",
+  "menu": {
+    "autoInject": true
+  }
+}
+```
+
+Notes:
+- If `menu.autoInject` is `false`, the menu layout is not injected.
+- `defaultRoute` must exist in `routes.gen.ts`.
 
 Optional paths:
 
