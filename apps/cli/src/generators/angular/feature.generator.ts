@@ -95,8 +95,11 @@ import { Component } from '@angular/core'
 import { JsonPipe, NgFor, NgIf } from '@angular/common'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
 import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
-import { UiFieldComponent } from '../../ui/ui-field/ui-field.component'
 import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
+import { UiSelectComponent } from '../../ui/ui-select/ui-select.component'
+import { UiCheckboxComponent } from '../../ui/ui-checkbox/ui-checkbox.component'
+import { UiInputComponent } from '../../ui/ui-input/ui-input.component'
+import { UiTextareaComponent } from '../../ui/ui-textarea/ui-textarea.component'
 import { ${name}Service } from './${fileBase}.service.gen'
 import { ${name}Gen } from './${fileBase}.gen'
 import screenSchema from '${schemaImportPath}'
@@ -110,8 +113,11 @@ import screenSchema from '${schemaImportPath}'
     JsonPipe,
     ReactiveFormsModule,
     UiCardComponent,
-    UiFieldComponent,
-    UiButtonComponent
+    UiButtonComponent,
+    UiSelectComponent,
+    UiCheckboxComponent,
+    UiInputComponent,
+    UiTextareaComponent
   ],
   templateUrl: './${fileBase}.component.html',
   styleUrls: ['./${fileBase}.component.scss']
@@ -322,10 +328,19 @@ export class ${name}Gen {
   }
 
   protected isSelect(field: any) {
+    if (field?.ui === 'select' || field?.ui === 'dropdown') return true
     return Array.isArray(field.options) && field.options.length > 0
   }
 
+  protected getSelectOptions(field: any) {
+    if (Array.isArray(field.options) && field.options.length > 0) {
+      return field.options
+    }
+    return []
+  }
+
   protected isCheckbox(field: any) {
+    if (field?.ui === 'select' || field?.ui === 'dropdown') return false
     return field.type === 'boolean'
   }
 
@@ -541,6 +556,17 @@ export class ${name}Service {
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
+}
+
+.form-field {
+  display: grid;
+  gap: 8px;
+}
+
+.field-error {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: -4px;
 }
 
 .actions {
@@ -836,51 +862,52 @@ function buildComponentHtml(options: {
     </p>
     <form [formGroup]="form" (ngSubmit)="submit()">
       <div class="form-grid">
-        <ui-field
-          *ngFor="let field of formFields"
-          [label]="field.label || field.name"
-          [hint]="field.hint"
-          [info]="field.info"
-        >
-          <select
+        <div class="form-field" *ngFor="let field of formFields">
+          <ui-select
             *ngIf="isSelect(field)"
-            [formControlName]="field.name"
-            [class.invalid]="isInvalid(field)"
-          >
-            <option
-              *ngFor="let option of field.options"
-              [value]="option"
-            >
-              {{ option }}
-            </option>
-          </select>
+            [label]="field.label || field.name"
+            [hint]="field.hint"
+            [info]="field.info"
+            [controlName]="field.name"
+            [options]="getSelectOptions(field)"
+            [invalid]="isInvalid(field)"
+          ></ui-select>
 
-          <textarea
+          <ui-textarea
             *ngIf="isTextarea(field)"
-            rows="3"
-            [formControlName]="field.name"
+            [label]="field.label || field.name"
+            [hint]="field.hint"
+            [info]="field.info"
+            [controlName]="field.name"
+            [rows]="3"
             [placeholder]="field.placeholder || field.label || field.name"
-            [class.invalid]="isInvalid(field)"
-          ></textarea>
+            [invalid]="isInvalid(field)"
+          ></ui-textarea>
 
-          <input
+          <ui-checkbox
             *ngIf="isCheckbox(field)"
-            type="checkbox"
-            [formControlName]="field.name"
-          />
+            [label]="field.label || field.name"
+            [hint]="field.hint"
+            [info]="field.info"
+            [controlName]="field.name"
+            [invalid]="isInvalid(field)"
+          ></ui-checkbox>
 
-          <input
+          <ui-input
             *ngIf="!isSelect(field) && !isTextarea(field) && !isCheckbox(field)"
+            [label]="field.label || field.name"
+            [hint]="field.hint"
+            [info]="field.info"
             [type]="inputType(field)"
-            [formControlName]="field.name"
+            [controlName]="field.name"
             [placeholder]="field.placeholder || field.label || field.name"
-            [class.invalid]="isInvalid(field)"
-          />
+            [invalid]="isInvalid(field)"
+          ></ui-input>
 
           <span class="field-error" *ngIf="isInvalid(field)">
             Campo obrigatório
           </span>
-        </ui-field>
+        </div>
       </div>
       <div class="actions">
         <ui-button
@@ -1008,11 +1035,22 @@ export class UiCardComponent {
 }
 
 .ui-card {
-  border-radius: 20px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-  padding: 28px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-card);
+  padding: 30px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ui-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-strong), var(--color-accent));
+  opacity: 0.65;
 }
 
 .ui-card__header {
@@ -1021,17 +1059,19 @@ export class UiCardComponent {
 
 .ui-card__title {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--bg-ink);
+  letter-spacing: -0.02em;
 }
 
 .ui-card__subtitle {
   margin: 8px 0 0;
-  font-size: 12px;
-  color: #6b7280;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  color: var(--color-muted);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  font-family: "Space Mono", "Courier New", monospace;
 }
 `
     },
@@ -1089,15 +1129,16 @@ export class UiFieldComponent {
 
 .ui-field {
   display: grid;
-  gap: 6px;
-  font-size: 12px;
-  color: #374151;
+  gap: 10px;
+  font-size: 13px;
+  color: #1f2937;
 }
 
 .ui-field__label {
   font-weight: 700;
   line-height: 1.4;
   word-break: break-word;
+  letter-spacing: 0.01em;
 }
 
 .ui-field__hint {
@@ -1110,7 +1151,7 @@ export class UiFieldComponent {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1px solid #cbd5f5;
+  border: 1px solid rgba(15, 23, 42, 0.2);
   background: #ffffff;
   color: #475569;
   font-size: 11px;
@@ -1137,31 +1178,29 @@ export class UiFieldComponent {
 }
 
 :host ::ng-deep input,
-:host ::ng-deep textarea,
-:host ::ng-deep select {
+:host ::ng-deep textarea {
   width: 100%;
-  min-height: 2.6rem;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  min-height: 3.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
   background: #ffffff;
-  padding: 0.6rem 0.8rem;
-  font-size: 14px;
+  padding: 0.9rem 1.1rem;
+  font-size: 15px;
   font-weight: 500;
   box-shadow: none;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 :host ::ng-deep input:focus,
-:host ::ng-deep textarea:focus,
-:host ::ng-deep select:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+:host ::ng-deep textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  transform: translateY(-1px);
 }
 
 :host ::ng-deep input.invalid,
-:host ::ng-deep textarea.invalid,
-:host ::ng-deep select.invalid {
+:host ::ng-deep textarea.invalid {
   border-color: #ef4444;
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
 }
@@ -1171,27 +1210,13 @@ export class UiFieldComponent {
   color: #94a3b8;
 }
 
-:host ::ng-deep select {
-  padding-right: 2.2rem;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8' fill='none'><path d='M1 1.5L7 6.5L13 1.5' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 0.7rem center;
-  background-size: 14px 8px;
-  appearance: none;
-}
-
-:host ::ng-deep textarea {
-  min-height: 5.5rem;
-  resize: vertical;
-}
-
 :host ::ng-deep input[type='checkbox'] {
   width: 20px;
   height: 20px;
   padding: 0;
   border-radius: 6px;
   box-shadow: none;
-  accent-color: #6366f1;
+  accent-color: var(--color-primary);
 }
 
 .field-error {
@@ -1233,18 +1258,19 @@ export class UiButtonComponent {
       scss: `
 .ui-button {
   border: none;
-  border-radius: 10px;
-  padding: 12px 22px;
+  border-radius: 999px;
+  padding: 12px 24px;
   font-weight: 700;
   font-size: 14px;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .ui-button.primary {
-  background: linear-gradient(135deg, #6366f1, #818cf8);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
   color: #ffffff;
-  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.22);
+  box-shadow: 0 12px 24px rgba(8, 145, 178, 0.3);
 }
 
 .ui-button.ghost {
@@ -1255,17 +1281,597 @@ export class UiButtonComponent {
 .ui-button.danger {
   background: linear-gradient(135deg, #ef4444, #f97316);
   color: #fff;
-  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.25);
 }
 
 .ui-button:hover:not(:disabled) {
   transform: translateY(-1px);
+  filter: brightness(1.02);
 }
 
 .ui-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
+}
+`
+    },
+    {
+      name: 'ui-input',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgIf } from '@angular/common'
+import {
+  ControlContainer,
+  FormGroupDirective,
+  ReactiveFormsModule
+} from '@angular/forms'
+
+@Component({
+  selector: 'ui-input',
+  standalone: true,
+  imports: [NgIf, ReactiveFormsModule],
+  viewProviders: [
+    { provide: ControlContainer, useExisting: FormGroupDirective }
+  ],
+  templateUrl: './ui-input.component.html',
+  styleUrls: ['./ui-input.component.scss']
+})
+export class UiInputComponent {
+  @Input() label = ''
+  @Input() hint = ''
+  @Input() info = ''
+  @Input() controlName = ''
+  @Input() placeholder = ''
+  @Input() type: 'text' | 'number' | 'email' | 'password' | 'search' | 'tel' | 'url' = 'text'
+  @Input() invalid = false
+  infoOpen = false
+
+  toggleInfo(event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.infoOpen = !this.infoOpen
+  }
+}
+`,
+      html: `
+<label class="ui-control">
+  <span class="ui-control__label" *ngIf="label">
+    {{ label }}
+    <button
+      class="ui-control__info"
+      type="button"
+      *ngIf="info"
+      (click)="toggleInfo($event)"
+      [attr.aria-expanded]="infoOpen"
+    >
+      i
+    </button>
+  </span>
+  <div class="ui-control__info-panel" *ngIf="info && infoOpen">
+    {{ info }}
+  </div>
+  <input
+    class="ui-control__input"
+    [type]="type"
+    [formControlName]="controlName"
+    [placeholder]="placeholder"
+    [class.invalid]="invalid"
+  />
+  <span class="ui-control__hint" *ngIf="hint && !info">{{ hint }}</span>
+</label>
+`,
+      scss: `
+:host {
+  display: block;
+}
+
+.ui-control {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ui-control__label {
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+
+.ui-control__hint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.ui-control__info {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ui-control__info:hover {
+  background: #f8fafc;
+}
+
+.ui-control__info-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ui-control__input {
+  width: 100%;
+  min-height: 3.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  padding: 0.9rem 1.1rem;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: none;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.ui-control__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  transform: translateY(-1px);
+}
+
+.ui-control__input.invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+
+.ui-control__input::placeholder {
+  color: #94a3b8;
+}
+`
+    },
+    {
+      name: 'ui-textarea',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgIf } from '@angular/common'
+import {
+  ControlContainer,
+  FormGroupDirective,
+  ReactiveFormsModule
+} from '@angular/forms'
+
+@Component({
+  selector: 'ui-textarea',
+  standalone: true,
+  imports: [NgIf, ReactiveFormsModule],
+  viewProviders: [
+    { provide: ControlContainer, useExisting: FormGroupDirective }
+  ],
+  templateUrl: './ui-textarea.component.html',
+  styleUrls: ['./ui-textarea.component.scss']
+})
+export class UiTextareaComponent {
+  @Input() label = ''
+  @Input() hint = ''
+  @Input() info = ''
+  @Input() controlName = ''
+  @Input() placeholder = ''
+  @Input() rows = 3
+  @Input() invalid = false
+  infoOpen = false
+
+  toggleInfo(event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.infoOpen = !this.infoOpen
+  }
+}
+`,
+      html: `
+<label class="ui-control">
+  <span class="ui-control__label" *ngIf="label">
+    {{ label }}
+    <button
+      class="ui-control__info"
+      type="button"
+      *ngIf="info"
+      (click)="toggleInfo($event)"
+      [attr.aria-expanded]="infoOpen"
+    >
+      i
+    </button>
+  </span>
+  <div class="ui-control__info-panel" *ngIf="info && infoOpen">
+    {{ info }}
+  </div>
+  <textarea
+    class="ui-control__input"
+    [formControlName]="controlName"
+    [rows]="rows"
+    [placeholder]="placeholder"
+    [class.invalid]="invalid"
+  ></textarea>
+  <span class="ui-control__hint" *ngIf="hint && !info">{{ hint }}</span>
+</label>
+`,
+      scss: `
+:host {
+  display: block;
+}
+
+.ui-control {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ui-control__label {
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+
+.ui-control__hint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.ui-control__info {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ui-control__info:hover {
+  background: #f8fafc;
+}
+
+.ui-control__info-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ui-control__input {
+  width: 100%;
+  min-height: 3.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  padding: 0.9rem 1.1rem;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: none;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.ui-control__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  transform: translateY(-1px);
+}
+
+.ui-control__input.invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+
+.ui-control__input::placeholder {
+  color: #94a3b8;
+}
+`
+    },
+    {
+      name: 'ui-select',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgFor, NgIf } from '@angular/common'
+import {
+  ControlContainer,
+  FormGroupDirective,
+  ReactiveFormsModule
+} from '@angular/forms'
+
+@Component({
+  selector: 'ui-select',
+  standalone: true,
+  imports: [NgFor, NgIf, ReactiveFormsModule],
+  viewProviders: [
+    { provide: ControlContainer, useExisting: FormGroupDirective }
+  ],
+  templateUrl: './ui-select.component.html',
+  styleUrls: ['./ui-select.component.scss']
+})
+export class UiSelectComponent {
+  @Input() label = ''
+  @Input() hint = ''
+  @Input() info = ''
+  @Input() controlName = ''
+  @Input() options: any[] = []
+  @Input() invalid = false
+  infoOpen = false
+
+  toggleInfo(event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.infoOpen = !this.infoOpen
+  }
+}
+`,
+      html: `
+<label class="ui-control">
+  <span class="ui-control__label" *ngIf="label">
+    {{ label }}
+    <button
+      class="ui-control__info"
+      type="button"
+      *ngIf="info"
+      (click)="toggleInfo($event)"
+      [attr.aria-expanded]="infoOpen"
+    >
+      i
+    </button>
+  </span>
+  <div class="ui-control__info-panel" *ngIf="info && infoOpen">
+    {{ info }}
+  </div>
+  <select
+    class="ui-control__select"
+    [formControlName]="controlName"
+    [class.invalid]="invalid"
+  >
+    <option *ngFor="let option of options" [value]="option">
+      {{ option }}
+    </option>
+  </select>
+  <span class="ui-control__hint" *ngIf="hint && !info">{{ hint }}</span>
+</label>
+`,
+      scss: `
+:host {
+  display: block;
+}
+
+.ui-control {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ui-control__label {
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+
+.ui-control__hint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.ui-control__info {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ui-control__info:hover {
+  background: #f8fafc;
+}
+
+.ui-control__info-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ui-control__select {
+  width: 100%;
+  min-height: 3.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  padding: 0.9rem 2.6rem 0.9rem 1.1rem;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: none;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8' fill='none'><path d='M1 1.5L7 6.5L13 1.5' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  background-size: 14px 8px;
+  appearance: none;
+}
+
+.ui-control__select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  transform: translateY(-1px);
+}
+
+.ui-control__select.invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+`
+    },
+    {
+      name: 'ui-checkbox',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgIf } from '@angular/common'
+import {
+  ControlContainer,
+  FormGroupDirective,
+  ReactiveFormsModule
+} from '@angular/forms'
+
+@Component({
+  selector: 'ui-checkbox',
+  standalone: true,
+  imports: [NgIf, ReactiveFormsModule],
+  viewProviders: [
+    { provide: ControlContainer, useExisting: FormGroupDirective }
+  ],
+  templateUrl: './ui-checkbox.component.html',
+  styleUrls: ['./ui-checkbox.component.scss']
+})
+export class UiCheckboxComponent {
+  @Input() label = ''
+  @Input() hint = ''
+  @Input() info = ''
+  @Input() controlName = ''
+  @Input() invalid = false
+  infoOpen = false
+
+  toggleInfo(event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.infoOpen = !this.infoOpen
+  }
+}
+`,
+      html: `
+<label class="ui-control">
+  <span class="ui-control__label" *ngIf="label">
+    {{ label }}
+    <button
+      class="ui-control__info"
+      type="button"
+      *ngIf="info"
+      (click)="toggleInfo($event)"
+      [attr.aria-expanded]="infoOpen"
+    >
+      i
+    </button>
+  </span>
+  <div class="ui-control__info-panel" *ngIf="info && infoOpen">
+    {{ info }}
+  </div>
+  <input
+    class="ui-control__checkbox"
+    type="checkbox"
+    [formControlName]="controlName"
+    [class.invalid]="invalid"
+  />
+  <span class="ui-control__hint" *ngIf="hint && !info">{{ hint }}</span>
+</label>
+`,
+      scss: `
+:host {
+  display: block;
+}
+
+.ui-control {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.ui-control__label {
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+
+.ui-control__hint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.ui-control__info {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ui-control__info:hover {
+  background: #f8fafc;
+}
+
+.ui-control__info-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ui-control__checkbox {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  accent-color: var(--color-primary);
 }
 `
     }
@@ -1294,10 +1900,10 @@ export class UiButtonComponent {
     if (shouldOverwrite(tsPath, 'infoOpen')) {
       fs.writeFileSync(tsPath, component.template.trimStart())
     }
-    if (shouldOverwrite(htmlPath, 'ui-field__info-panel')) {
+    if (shouldOverwrite(htmlPath, 'ui-control__info-panel')) {
       fs.writeFileSync(htmlPath, component.html.trimStart())
     }
-    if (shouldOverwrite(scssPath, 'ui-field__info-panel')) {
+    if (shouldOverwrite(scssPath, 'ui-control__info-panel')) {
       fs.writeFileSync(scssPath, component.scss.trimStart())
     }
   }

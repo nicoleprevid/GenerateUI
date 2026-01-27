@@ -25,12 +25,34 @@ export async function angular(options: {
   const overlaysDir = path.join(schemasRoot, 'overlays')
 
   if (!fs.existsSync(overlaysDir)) {
-    throw new Error(`Overlays directory not found: ${overlaysDir}`)
+    const example = [
+      'generate-ui angular \\',
+      '  --schemas /path/to/generate-ui \\',
+      '  --features /path/to/src/app/features'
+    ].join('\n')
+    throw new Error(
+      `Overlays directory not found: ${overlaysDir}\n` +
+        'Run again with --schemas pointing to your generate-ui folder.\n' +
+        `Example:\n${example}`
+    )
   }
 
   const screens = fs
     .readdirSync(overlaysDir)
     .filter(f => f.endsWith('.screen.json'))
+
+  if (screens.length === 0) {
+    const example = [
+      'generate-ui angular \\',
+      '  --schemas /path/to/generate-ui \\',
+      '  --features /path/to/src/app/features'
+    ].join('\n')
+    throw new Error(
+      `No .screen.json files found in: ${overlaysDir}\n` +
+        'Run again with --schemas pointing to your generate-ui folder.\n' +
+        `Example:\n${example}`
+    )
+  }
 
   /**
    * Onde gerar as features Angular
@@ -59,14 +81,6 @@ function resolveSchemasRoot(
 ) {
   if (value) {
     return path.resolve(process.cwd(), value)
-  }
-
-  const config = loadUserConfig()
-  if (config?.lastSchemasPath) {
-    const resolved = path.resolve(config.lastSchemasPath)
-    if (fs.existsSync(path.join(resolved, 'overlays'))) {
-      return resolved
-    }
   }
 
   const inferred = inferSchemasRootFromFeatures(featuresRoot)
@@ -98,13 +112,23 @@ function resolveFeaturesRoot(value?: string) {
 }
 
 function inferSchemasRootFromFeatures(featuresRoot: string) {
-  const candidate = path.resolve(
+  const srcCandidate = path.resolve(
+    featuresRoot,
+    '..',
+    '..',
+    'generate-ui'
+  )
+  if (fs.existsSync(path.join(srcCandidate, 'overlays'))) {
+    return srcCandidate
+  }
+
+  const rootCandidate = path.resolve(
     featuresRoot,
     '../../..',
     'generate-ui'
   )
-  if (fs.existsSync(path.join(candidate, 'overlays'))) {
-    return candidate
+  if (fs.existsSync(path.join(rootCandidate, 'overlays'))) {
+    return rootCandidate
   }
   return null
 }
