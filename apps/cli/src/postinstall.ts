@@ -25,3 +25,11 @@ async function sendInstallEvent() {
 }
 
 void sendInstallEvent()
+
+console.log('')
+console.log('👋 GenerateUI CLI installed')
+console.log('  Quick start:')
+console.log('  1) generate-ui generate --openapi /path/to/openapi.yaml')
+console.log('  2) generate-ui angular --schemas /path/to/generate-ui --features /path/to/app/src/app/features')
+console.log('  Tip: customize screens in generate-ui/overlays and menu in generate-ui/menu.overrides.json')
+console.log('')

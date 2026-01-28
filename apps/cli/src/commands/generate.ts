@@ -7,6 +7,7 @@ import { getPermissions } from '../license/permissions'
 import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
 import { trackCommand } from '../telemetry'
 import { updateUserConfig } from '../runtime/user-config'
+import { logDebug, logStep, logTip } from '../runtime/logger'
 
 interface GeneratedRoute {
   path: string
@@ -28,11 +29,13 @@ export async function generate(options: {
    * Ex: /Users/.../generateui-playground/realWorldOpenApi.yaml
    */
   const openApiPath = path.resolve(process.cwd(), options.openapi)
+  logStep(`OpenAPI: ${openApiPath}`)
 
   /**
    * Raiz do playground (onde está o YAML)
    */
   const projectRoot = path.dirname(openApiPath)
+  logDebug(`Project root: ${projectRoot}`)
 
   /**
    * Onde o Angular consome os arquivos
@@ -41,9 +44,12 @@ export async function generate(options: {
     projectRoot,
     options.output
   )
+  logStep(`Schemas output: ${generateUiRoot}`)
 
   const generatedDir = path.join(generateUiRoot, 'generated')
   const overlaysDir = path.join(generateUiRoot, 'overlays')
+  logDebug(`Generated dir: ${generatedDir}`)
+  logDebug(`Overlays dir: ${overlaysDir}`)
 
   updateUserConfig(config => ({
     ...config,
@@ -61,6 +67,9 @@ export async function generate(options: {
 
   const permissions = await getPermissions()
   const device = loadDeviceIdentity()
+  logDebug(
+    `License: maxGenerations=${permissions.features.maxGenerations}, overrides=${permissions.features.uiOverrides}, safeRegen=${permissions.features.safeRegeneration}`
+  )
 
   if (
     permissions.features.maxGenerations > -1 &&
@@ -79,6 +88,7 @@ export async function generate(options: {
    */
   const api = await loadOpenApi(openApiPath)
   const paths = api.paths ?? {}
+  logDebug(`OpenAPI paths: ${Object.keys(paths).length}`)
 
   /**
    * Itera por todos os endpoints
@@ -186,6 +196,7 @@ export async function generate(options: {
       console.log(`✔ Generated ${operationId}`)
     }
   }
+  logStep(`Screens generated: ${routes.length}`)
 
   /**
    * 4️⃣ Gera arquivo de rotas
@@ -195,6 +206,25 @@ export async function generate(options: {
     routesPath,
     JSON.stringify(routes, null, 2)
   )
+  logDebug(`Routes written: ${routesPath}`)
+
+  /**
+   * 4.3️⃣ Gera generateui-config.json (não sobrescreve)
+   */
+  const configPath = path.join(generateUiRoot, '..', '..', 'generateui-config.json')
+  if (!fs.existsSync(configPath)) {
+    const defaultConfig = {
+      appTitle: 'Generate UI',
+      defaultRoute: '',
+      menu: {
+        autoInject: true
+      }
+    }
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2))
+    logDebug(`Config created: ${configPath}`)
+  } else {
+    logDebug(`Config found: ${configPath}`)
+  }
 
   /**
    * 4.1️⃣ Gera menu inicial (override possível via menu.overrides.json)
@@ -202,6 +232,21 @@ export async function generate(options: {
   const menuPath = path.join(generateUiRoot, 'menu.json')
   const menu = buildMenuFromRoutes(routes)
   fs.writeFileSync(menuPath, JSON.stringify(menu, null, 2))
+  logDebug(`Menu written: ${menuPath}`)
+
+  /**
+   * 4.2️⃣ Gera menu.overrides.json (não sobrescreve)
+   */
+  const menuOverridesPath = path.join(generateUiRoot, 'menu.overrides.json')
+  if (!fs.existsSync(menuOverridesPath)) {
+    fs.writeFileSync(
+      menuOverridesPath,
+      JSON.stringify(menu, null, 2)
+    )
+    logDebug(`Menu overrides created: ${menuOverridesPath}`)
+  } else {
+    logDebug(`Menu overrides found: ${menuOverridesPath}`)
+  }
 
   /**
    * 5️⃣ Remove overlays órfãos (endpoint removido)
@@ -225,6 +270,15 @@ export async function generate(options: {
   }
 
   console.log('✔ Routes generated')
+  console.log('')
+  console.log('🎉 Next steps')
+  console.log('  1) Generate Angular code:')
+  console.log('     generate-ui angular --schemas <your-generate-ui> --features <your-app>/src/app/features')
+  console.log('  2) Customize screens in generate-ui/overlays/')
+  console.log('  3) Customize menu in generate-ui/menu.overrides.json (created once, never overwritten)')
+  console.log('  4) Edit generateui-config.json to set appTitle/defaultRoute/menu.autoInject')
+  console.log('')
+  logTip('Run with --dev to see detailed logs and file paths.')
 }
 
 function resolveGenerateUiRoot(

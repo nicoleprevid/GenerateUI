@@ -142,7 +142,11 @@ export class ${name}Component extends ${name}Gen {
       .execute(pathParams, queryParams, body)
       .subscribe({
         next: result => {
-          this.result = result
+          const normalized =
+            result && typeof result === 'object' && 'body' in result
+              ? (result as any).body
+              : result
+          this.result = normalized
           this.loading = false
         },
         error: error => {
@@ -157,20 +161,17 @@ export class ${name}Component extends ${name}Gen {
   }
 
   getRows() {
-    const value = this.result
+    const value = this.unwrapResult(this.result)
     if (Array.isArray(value)) return value
     if (!value || typeof value !== 'object') return []
 
-    const commonKeys = ['data', 'items', 'results', 'list', 'records']
+    const commonKeys = ['data', 'items', 'results', 'list', 'records', 'products']
     for (const key of commonKeys) {
       if (Array.isArray(value[key])) return value[key]
     }
 
-    for (const key of Object.keys(value)) {
-      if (Array.isArray(value[key])) return value[key]
-    }
-
-    return []
+    const found = this.findFirstArray(value, 0, 5)
+    return found ?? []
   }
 
   getColumns() {
@@ -194,7 +195,7 @@ export class ${name}Component extends ${name}Gen {
     return value
       .replace(/[_-]/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
-      .replace(/\b\w/g, char => char.toUpperCase())
+      .replace(/\\b\\w/g, char => char.toUpperCase())
   }
 
   getCellValue(row: any, column: string) {
@@ -219,7 +220,7 @@ export class ${name}Component extends ${name}Gen {
     )
   }
 
-  private formatValue(value: any): string {
+  formatValue(value: any): string {
     if (value === null || value === undefined) return ''
     if (typeof value === 'string' || typeof value === 'number') {
       return String(value)
@@ -243,11 +244,40 @@ export class ${name}Component extends ${name}Gen {
   }
 
   getObjectRows() {
-    const value = this.result
+    const value = this.unwrapResult(this.result)
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return []
     }
     return this.flattenObject(value)
+  }
+
+  hasObjectRows() {
+    return this.getObjectRows().length > 0
+  }
+
+  isSingleValue() {
+    const value = this.unwrapResult(this.result)
+    return (
+      value !== null &&
+      value !== undefined &&
+      (typeof value === 'string' ||
+        typeof value === 'number' ||
+        typeof value === 'boolean')
+    )
+  }
+
+  private unwrapResult(value: any) {
+    if (!value || typeof value !== 'object') return value
+    if (Object.prototype.hasOwnProperty.call(value, 'data')) {
+      return value.data
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'result')) {
+      return value.result
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'body')) {
+      return value.body
+    }
+    return value
   }
 
   private flattenObject(
@@ -264,6 +294,22 @@ export class ${name}Component extends ${name}Gen {
       rows.push({ key: fullKey, value: this.formatValue(raw) })
     }
     return rows
+  }
+
+  private findFirstArray(
+    value: any,
+    depth: number,
+    maxDepth: number
+  ): any[] | null {
+    if (!value || depth > maxDepth) return null
+    if (Array.isArray(value)) return value
+    if (typeof value !== 'object') return null
+
+    for (const key of Object.keys(value)) {
+      const found = this.findFirstArray(value[key], depth + 1, maxDepth)
+      if (found) return found
+    }
+    return null
   }
 
 }
@@ -533,11 +579,13 @@ export class ${name}Service {
 :host {
   display: block;
   padding: 24px;
+  min-height: 100vh;
 }
 
 .page {
   display: grid;
   gap: 16px;
+  min-height: calc(100vh - 48px);
 }
 
 .screen-description {
@@ -588,10 +636,12 @@ export class ${name}Service {
 
 .result-table {
   margin-top: 20px;
-  overflow: hidden;
+  max-width: 100%;
+  overflow: auto;
   border-radius: 16px;
   border: 1px solid #e2e8f0;
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  -webkit-overflow-scrolling: touch;
 }
 
 .result-card {
@@ -635,8 +685,74 @@ export class ${name}Service {
   text-align: right;
 }
 
+.result-error {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #fff1f2;
+  color: #881337;
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.15);
+  display: grid;
+  gap: 8px;
+}
+
+.result-error__body {
+  font-size: 13px;
+  color: #7f1d1d;
+  word-break: break-word;
+}
+
+.result-raw {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  background: #f8fafc;
+  color: #0f172a;
+  display: grid;
+  gap: 10px;
+}
+
+.result-raw summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #334155;
+}
+
+.result-raw pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.result-single {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  color: #0f172a;
+  display: grid;
+  gap: 8px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.result-single__value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
 .data-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   background: #ffffff;
   font-size: 14px;
@@ -673,6 +789,17 @@ export class ${name}Service {
   object-fit: cover;
   border-radius: 6px;
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.16);
+}
+
+:host ::ng-deep ui-card .ui-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
+}
+
+:host ::ng-deep ui-card .ui-card__body {
+  overflow: auto;
+  min-height: 0;
 }
 
 @media (max-width: 720px) {
@@ -848,6 +975,65 @@ function buildComponentHtml(options: {
       </ui-button>
     </div>
   </ui-card>
+
+  <div class="result-table" *ngIf="isArrayResult()">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th *ngFor="let column of getColumns()">
+            {{ formatHeader(column) }}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of getRows()">
+          <td *ngFor="let column of getColumns()">
+            <img
+              *ngIf="isImageCell(row, column)"
+              [src]="getCellValue(row, column)"
+              [alt]="formatHeader(column)"
+              class="cell-image"
+            />
+            <span *ngIf="!isImageCell(row, column)">
+              {{ getCellValue(row, column) }}
+            </span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="result-error" *ngIf="error">
+    <strong>Request failed.</strong>
+    <div class="result-error__body">
+      {{ error?.message || (error | json) }}
+    </div>
+  </div>
+
+  <div class="result-card" *ngIf="!isArrayResult() && hasObjectRows()">
+    <div class="result-card__grid">
+      <div class="result-card__row" *ngFor="let row of getObjectRows()">
+        <span class="result-card__label">
+          {{ formatHeader(row.key) }}
+        </span>
+        <span class="result-card__value">
+          {{ row.value }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="result-single" *ngIf="!isArrayResult() && isSingleValue()">
+    <strong>Result</strong>
+    <div class="result-single__value">
+      {{ formatValue(result) }}
+    </div>
+  </div>
+
+  <details class="result-raw" *ngIf="result">
+    <summary>Raw response</summary>
+    <pre>{{ result | json }}</pre>
+  </details>
 </div>
 `
   }
@@ -946,7 +1132,14 @@ function buildComponentHtml(options: {
     </table>
   </div>
 
-  <div class="result-card" *ngIf="!isArrayResult() && result">
+  <div class="result-error" *ngIf="error">
+    <strong>Request failed.</strong>
+    <div class="result-error__body">
+      {{ error?.message || (error | json) }}
+    </div>
+  </div>
+
+  <div class="result-card" *ngIf="!isArrayResult() && hasObjectRows()">
     <div class="result-card__grid">
       <div class="result-card__row" *ngFor="let row of getObjectRows()">
         <span class="result-card__label">
@@ -958,6 +1151,18 @@ function buildComponentHtml(options: {
       </div>
     </div>
   </div>
+
+  <div class="result-single" *ngIf="!isArrayResult() && isSingleValue()">
+    <strong>Result</strong>
+    <div class="result-single__value">
+      {{ formatValue(result) }}
+    </div>
+  </div>
+
+  <details class="result-raw" *ngIf="result">
+    <summary>Raw response</summary>
+    <pre>{{ result | json }}</pre>
+  </details>
 </div>
 `
 }
@@ -1170,6 +1375,7 @@ export class UiCardComponent {
 }
 
 .ui-menu__item {
+  display: block;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
@@ -1178,6 +1384,9 @@ export class UiCardComponent {
   border-radius: 14px;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   border: 1px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ui-menu__item:hover {

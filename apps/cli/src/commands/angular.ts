@@ -5,6 +5,7 @@ import { generateRoutes } from '../generators/angular/routes.generator'
 import { generateMenu } from '../generators/angular/menu.generator'
 import { trackCommand } from '../telemetry'
 import { loadUserConfig } from '../runtime/user-config'
+import { logDebug, logStep, logTip } from '../runtime/logger'
 
 export async function angular(options: {
   schemasPath?: string
@@ -18,11 +19,18 @@ export async function angular(options: {
     options.schemasPath,
     featuresRoot
   )
+  logStep(`Features output: ${featuresRoot}`)
+  logStep(`Schemas input: ${schemasRoot}`)
 
   /**
    * Onde estão os schemas
    * Ex: generate-ui
    */
+  if (options.schemasPath && !fs.existsSync(schemasRoot)) {
+    fs.mkdirSync(schemasRoot, { recursive: true })
+    console.log(`ℹ Created generate-ui folder at ${schemasRoot}`)
+  }
+
   const overlaysDir = path.join(schemasRoot, 'overlays')
 
   if (!fs.existsSync(overlaysDir)) {
@@ -33,14 +41,16 @@ export async function angular(options: {
     ].join('\n')
     throw new Error(
       `Overlays directory not found: ${overlaysDir}\n` +
-        'Run again with --schemas pointing to your generate-ui folder.\n' +
+        'Run `generate-ui generate --openapi <path> --output <schemas>` first to create overlays.\n' +
         `Example:\n${example}`
     )
   }
+  logDebug(`Overlays dir: ${overlaysDir}`)
 
   const screens = fs
     .readdirSync(overlaysDir)
     .filter(f => f.endsWith('.screen.json'))
+  logDebug(`Screens found: ${screens.length}`)
 
   if (screens.length === 0) {
     const example = [
@@ -76,6 +86,7 @@ export async function angular(options: {
   applyAppLayout(featuresRoot, schemasRoot)
 
   console.log(`✔ Angular features generated at ${featuresRoot}`)
+  logTip('Run with --dev to see detailed logs and file paths.')
 }
 
 function resolveSchemasRoot(
@@ -159,6 +170,28 @@ function applyAppLayout(featuresRoot: string, schemasRoot: string) {
   const appRoot = path.resolve(featuresRoot, '..')
   const configInfo = findConfig(appRoot)
   const config = configInfo.config
+  if (configInfo.configPath) {
+    logDebug(`Config path: ${configInfo.configPath}`)
+  }
+  if (config) {
+    const resolvedTitle = config.appTitle ?? 'Generate UI'
+    const resolvedRoute = config.defaultRoute ?? '(not set)'
+    const resolvedInject = config.menu?.autoInject !== false
+    console.log('✅ GenerateUI config detected')
+    console.log('')
+    console.log(`  🏷️  appTitle: "${resolvedTitle}"`)
+    console.log(`  ➡️  defaultRoute: ${resolvedRoute}`)
+    console.log(`  🧭 menu.autoInject: ${resolvedInject}`)
+    console.log('  🧩 menu overrides: edit generate-ui/menu.overrides.json to customize labels, groups, and order')
+    console.log('     (this file is created once and never overwritten)')
+    console.log('')
+  } else {
+    console.log('ℹ️  No generateui-config.json found. Using defaults.')
+    console.log('')
+    console.log('  ✨ To customize, add generateui-config.json at your project root.')
+    console.log('  🧩 To customize the menu, edit generate-ui/menu.overrides.json (created on first generate).')
+    console.log('')
+  }
 
   if (config?.defaultRoute) {
     injectDefaultRoute(appRoot, config.defaultRoute)
@@ -174,13 +207,15 @@ function applyAppLayout(featuresRoot: string, schemasRoot: string) {
 function findConfig(startDir: string) {
   let dir = startDir
   let config: GenerateUiConfig | null = null
+  let configPath: string | null = null
   const root = path.parse(dir).root
 
   while (true) {
-    const configPath = path.join(dir, 'generateui-config.json')
-    if (!config && fs.existsSync(configPath)) {
+    const candidate = path.join(dir, 'generateui-config.json')
+    if (!config && fs.existsSync(candidate)) {
       try {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+        config = JSON.parse(fs.readFileSync(candidate, 'utf-8'))
+        configPath = candidate
       } catch {
         config = null
       }
@@ -190,12 +225,15 @@ function findConfig(startDir: string) {
     dir = path.dirname(dir)
   }
 
-  return { config }
+  return { config, configPath }
 }
 
 function injectDefaultRoute(appRoot: string, value: string) {
   const routesPath = path.join(appRoot, 'app.routes.ts')
-  if (!fs.existsSync(routesPath)) return
+  if (!fs.existsSync(routesPath)) {
+    logDebug(`Skip defaultRoute: ${routesPath} not found`)
+    return
+  }
 
   let content = fs.readFileSync(routesPath, 'utf-8')
   const route = normalizeRoutePath(value)
@@ -204,6 +242,7 @@ function injectDefaultRoute(appRoot: string, value: string) {
   if (!content.trim().length) {
     const template = `import { Routes } from '@angular/router'\nimport { generatedRoutes } from '../generate-ui/routes.gen'\n\nexport const routes: Routes = [\n${insertion}  ...generatedRoutes\n]\n`
     fs.writeFileSync(routesPath, template)
+    logDebug(`Default route injected (created): ${routesPath}`)
     return
   }
 
@@ -231,6 +270,7 @@ function injectDefaultRoute(appRoot: string, value: string) {
   }
 
   fs.writeFileSync(routesPath, content)
+  logDebug(`Default route injected (updated): ${routesPath}`)
 }
 
 function injectMenuLayout(
@@ -247,22 +287,34 @@ function injectMenuLayout(
     !fs.existsSync(appCssPath) ||
     !fs.existsSync(appTsPath)
   ) {
+    logDebug('Skip menu injection: app.html/app.css/app.ts not found')
     return
   }
 
   const htmlRaw = fs.readFileSync(appHtmlPath, 'utf-8')
-  if (htmlRaw.includes('<ui-menu')) return
+  if (htmlRaw.includes('<ui-menu')) {
+    let updatedHtml = htmlRaw
+    updatedHtml = updatedHtml.replace(
+      /<ui-menu(?![^>]*\[\s*title\s*\])[\\s>]/,
+      '<ui-menu [title]="appTitle()">'
+    )
+    if (updatedHtml !== htmlRaw) {
+      fs.writeFileSync(appHtmlPath, updatedHtml)
+      logDebug(`Updated ui-menu title binding: ${appHtmlPath}`)
+    }
+  } else {
+    const normalized = htmlRaw.replace(/\s+/g, '')
+    const isDefaultOutlet =
+      normalized === '<router-outlet></router-outlet>' ||
+      normalized === '<router-outlet/>' ||
+      normalized === '<router-outlet/>'
 
-  const normalized = htmlRaw.replace(/\s+/g, '')
-  const isDefaultOutlet =
-    normalized === '<router-outlet></router-outlet>' ||
-    normalized === '<router-outlet/>' ||
-    normalized === '<router-outlet/>'
+    if (!isDefaultOutlet) return
 
-  if (!isDefaultOutlet) return
-
-  const newHtml = `<div class="app-shell">\n  <ui-menu [title]="appTitle()"></ui-menu>\n  <main class="app-content">\n    <router-outlet></router-outlet>\n  </main>\n</div>\n`
-  fs.writeFileSync(appHtmlPath, newHtml)
+    const newHtml = `<div class="app-shell">\n  <ui-menu [title]="appTitle()"></ui-menu>\n  <main class="app-content">\n    <router-outlet></router-outlet>\n  </main>\n</div>\n`
+    fs.writeFileSync(appHtmlPath, newHtml)
+    logDebug(`Injected menu layout into: ${appHtmlPath}`)
+  }
 
   const cssRaw = fs.readFileSync(appCssPath, 'utf-8')
   if (!cssRaw.includes('.app-shell')) {
@@ -271,6 +323,7 @@ function injectMenuLayout(
       appCssPath,
       cssRaw.trim().length ? `${cssRaw.trim()}\n\n${shellCss}` : shellCss
     )
+    logDebug(`Injected menu shell styles into: ${appCssPath}`)
   }
 
   let tsRaw = fs.readFileSync(appTsPath, 'utf-8')
@@ -288,9 +341,16 @@ function injectMenuLayout(
       match => `${match}RouterOutlet, UiMenuComponent, `
     )
     tsRaw = tsRaw.replace(/UiMenuComponent,\s*UiMenuComponent,\s*/g, 'UiMenuComponent, ')
+    tsRaw = tsRaw.replace(/RouterOutlet,\s*RouterOutlet,\s*/g, 'RouterOutlet, ')
+    tsRaw = tsRaw.replace(/UiMenuComponent,\s*RouterOutlet,\s*UiMenuComponent,/g, 'UiMenuComponent, ')
   }
 
-  if (!tsRaw.includes('appTitle')) {
+  if (tsRaw.includes('appTitle')) {
+    tsRaw = tsRaw.replace(
+      /appTitle\s*=\s*signal\('([^']*)'\)/,
+      `appTitle = signal('${escapeString(appTitle)}')`
+    )
+  } else {
     if (!tsRaw.match(/import\s+\{\s*[^}]*\bsignal\b[^}]*\}\s+from\s+['"]@angular\/core['"]/)) {
       tsRaw = tsRaw.replace(
         /import\s+\{\s*([^}]+)\s*\}\s+from\s+['"]@angular\/core['"];?/,
@@ -309,7 +369,14 @@ function injectMenuLayout(
     )
   }
 
+  // Remove legacy runtime config loader if present.
+  if (tsRaw.includes('loadRuntimeConfig')) {
+    tsRaw = tsRaw.replace(/\\s*constructor\\(\\)\\s*\\{[\\s\\S]*?\\}\\s*/m, '\n')
+    tsRaw = tsRaw.replace(/\\s*private\\s+loadRuntimeConfig\\(\\)\\s*\\{[\\s\\S]*?\\}\\s*/m, '\n')
+  }
+
   fs.writeFileSync(appTsPath, tsRaw)
+  logDebug(`Updated app title/menu imports: ${appTsPath}`)
 
   const menuComponentPath = path.join(
     appRoot,
@@ -326,6 +393,7 @@ function injectMenuLayout(
 function escapeString(value: string) {
   return String(value).replace(/'/g, "\\'")
 }
+
 
 function normalizeRoutePath(value: string) {
   const trimmed = String(value ?? '').trim()

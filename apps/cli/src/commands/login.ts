@@ -7,14 +7,17 @@ import { openBrowser } from '../runtime/open-browser'
 import { saveToken } from '../license/token'
 import { fetchPermissions } from '../license/permissions'
 import { trackCommand, trackLogin } from '../telemetry'
+import { logDebug, logStep } from '../runtime/logger'
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000
 
 export async function login(options: { telemetryEnabled: boolean }) {
   void trackCommand('login', options.telemetryEnabled)
 
+  logStep('Starting login flow')
   const token = await waitForLogin()
   saveToken(token)
+  logDebug('Token saved')
 
   let permissionsLoaded = false
   try {
@@ -185,6 +188,7 @@ async function waitForLogin(): Promise<{
 
       loginUrl = url.toString()
       console.log(`Open this URL to finish login: ${loginUrl}`)
+      logDebug(`Login callback listening on ${redirectUri}`)
       openBrowser(loginUrl)
     })
   })

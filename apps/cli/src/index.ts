@@ -9,6 +9,7 @@ import {
   trackCommandHelp,
   trackGenerateCalled
 } from './telemetry'
+import { isVerbose, setVerbose } from './runtime/logger'
 
 const program = new Command()
 
@@ -17,6 +18,8 @@ program
   .description('Generate UI from OpenAPI')
   .version(getCliVersion())
   .option('--no-telemetry', 'Disable telemetry')
+  .option('--dev', 'Enable verbose logs')
+  .option('--verbose', 'Enable verbose logs (same as --dev)')
 
 /**
  * 1️⃣ OpenAPI → Screen schemas
@@ -31,7 +34,12 @@ program
   )
   .option('-d, --debug', 'Explain merge decisions')
   .action(async (options) => {
-    const { telemetry } = program.opts<{ telemetry: boolean }>()
+    const { telemetry, dev, verbose } = program.opts<{
+      telemetry: boolean
+      dev?: boolean
+      verbose?: boolean
+    }>()
+    setVerbose(Boolean(dev || verbose))
     try {
       await trackGenerateCalled()
       await generate({
@@ -57,7 +65,12 @@ program
   )
   .option('-f, --features <path>', 'Angular features output directory')
   .action(async (options) => {
-    const { telemetry } = program.opts<{ telemetry: boolean }>()
+    const { telemetry, dev, verbose } = program.opts<{
+      telemetry: boolean
+      dev?: boolean
+      verbose?: boolean
+    }>()
+    setVerbose(Boolean(dev || verbose))
     try {
       await angular({
         schemasPath: options.schemas,
@@ -76,7 +89,12 @@ program
   .command('login')
   .description('Login to unlock Dev features')
   .action(async () => {
-    const { telemetry } = program.opts<{ telemetry: boolean }>()
+    const { telemetry, dev, verbose } = program.opts<{
+      telemetry: boolean
+      dev?: boolean
+      verbose?: boolean
+    }>()
+    setVerbose(Boolean(dev || verbose))
     try {
       await login({ telemetryEnabled: telemetry })
     } catch (error) {
@@ -87,6 +105,14 @@ program
 function handleCliError(error: unknown) {
   if (error instanceof Error) {
     console.error(error.message.replace(/\\n/g, '\n'))
+    if (isVerbose() && error.stack) {
+      console.error('')
+      console.error('🔎 Stack trace:')
+      console.error(error.stack)
+    } else {
+      console.error('')
+      console.error('ℹ️  Tip: re-run with --dev to see detailed logs.')
+    }
   } else {
     console.error('Unexpected error')
   }

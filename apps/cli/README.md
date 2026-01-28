@@ -110,7 +110,7 @@ Defaults:
 
 ### generateui-config.json (optional)
 
-If you add a `generateui-config.json` at your project root (or any parent of `src/app`), the Angular generator can:
+GenerateUI creates a `generateui-config.json` at your project root on first `generate`. You can edit it to:
 
 - inject a sidebar menu layout automatically (when `menu.autoInject` is not `false`)
 - add a default redirect for `/` using `defaultRoute`
@@ -132,6 +132,27 @@ Notes:
 - If `menu.autoInject` is `false`, the menu layout is not injected.
 - `defaultRoute` must match a path in `routes.gen.ts` (the same path used by the router).
 - You can provide either the final route path or an `operationId`; the generator normalizes it to the correct path.
+- You can override the menu by adding `menu.overrides.json` inside your `generate-ui/` folder (it replaces the generated menu entirely).
+
+Example `menu.overrides.json`:
+
+```json
+{
+  "groups": [
+    {
+      "id": "cadastros",
+      "label": "Cadastros",
+      "items": [
+        { "id": "GetCharacter", "label": "Personagens", "route": "getCharacter" },
+        { "id": "GetLocation", "label": "Localizações", "route": "getLocation" }
+      ]
+    }
+  ],
+  "ungrouped": [
+    { "id": "GetEpisode", "label": "Episódios", "route": "getEpisode" }
+  ]
+}
+```
 
 Optional paths:
 
