@@ -57,7 +57,7 @@ GenerateUI works in two main steps:
 ## 1) Generate `screens.json`
 
 ```bash
-generate-ui generate --openapi youropenapi.yaml
+generate-ui generate --openapi openapiWeather.yaml
 ```
 
 What happens after this command:
@@ -92,6 +92,7 @@ What happens after this command:
   - a typed API service
   - DTO/types files
   - route definitions
+  - `menu.json` and `menu.gen.ts` (if present in `generate-ui/`)
 
 What you should review now:
 
@@ -105,7 +106,80 @@ If your project uses custom routing, standalone components, or advanced layouts,
 
 Defaults:
 - `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
-- `--features` defaults to `./src/app/features` when it exists, otherwise `./frontend/src/app/features` or `./features`
+- `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
+
+### Smart admin screens (Dev plan)
+
+When you are logged in and Dev features are enabled, GenerateUI creates **one Admin screen per entity** when it finds a collection GET endpoint.
+
+Example:
+
+- `GET /products` → `ProductsAdmin`
+- `GET /users` → `UsersAdmin`
+
+If the API also includes:
+
+- `GET /entity/{id}` → the Admin list links to a Detail screen
+- `PUT/PATCH /entity/{id}` → the Admin list links to Edit
+- `DELETE /entity/{id}` → Delete actions with confirmation modal
+
+The Admin list is generated in addition to the basic screens (list, get by id, create, update, delete). It is never a replacement.
+
+### generateui-config.json (optional)
+
+GenerateUI creates a `generateui-config.json` at your project root on first `generate`. You can edit it to:
+
+- inject a sidebar menu layout automatically (when `menu.autoInject` is not `false`)
+- add a default redirect for `/` using `defaultRoute`
+- show a custom app title in the menu (`appTitle`)
+
+Example:
+
+```json
+{
+  "appTitle": "Rick & Morty Admin",
+  "defaultRoute": "GetCharacter",
+  "menu": {
+    "autoInject": true
+  }
+}
+```
+
+Notes:
+- If `menu.autoInject` is `false`, the menu layout is not injected.
+- `defaultRoute` must match a path in `routes.gen.ts` (the same path used by the router).
+- You can provide either the final route path or an `operationId`; the generator normalizes it to the correct path.
+- You can override the menu by adding `menu.overrides.json` inside your `generate-ui/` folder (it replaces the generated menu entirely).
+- You can choose a default list view per screen (table vs cards) by adding a `views` map:
+
+```json
+{
+  "views": {
+    "ProductsAdmin": "cards",
+    "GetProducts": "table"
+  }
+}
+```
+
+Example `menu.overrides.json`:
+
+```json
+{
+  "groups": [
+    {
+      "id": "cadastros",
+      "label": "Cadastros",
+      "items": [
+        { "id": "GetCharacter", "label": "Personagens", "route": "getCharacter" },
+        { "id": "GetLocation", "label": "Localizações", "route": "getLocation" }
+      ]
+    }
+  ],
+  "ungrouped": [
+    { "id": "GetEpisode", "label": "Episódios", "route": "getEpisode" }
+  ]
+}
+```
 
 Optional paths:
 
@@ -235,6 +309,44 @@ Rule of thumb: the generated code is yours — generate once, then evolve freely
 You can edit files inside `overlays/` to customize labels, placeholders, hints, and other details. When your API changes and you regenerate, GenerateUI updates what is safe to change from the OpenAPI, but preserves what you defined in `overlays/` to avoid breaking your flow.
 
 Even after the Angular TypeScript files are generated, changes you make in `overlays/` will be mirrored the next time you regenerate.
+
+
+### Theme / colors / fonts (quick change)
+
+The generated UI uses CSS variables. To update the entire app theme at once, edit your app's root `styles.css`:
+
+```css
+:root {
+  --bg-page: #f7f3ef;
+  --bg-surface: #ffffff;
+  --bg-ink: #0f172a;
+  --color-text: #111827;
+  --color-muted: #6b7280;
+  --color-primary: #0f766e;
+  --color-primary-strong: #0891b2;
+  --color-accent: #f97316;
+  --shadow-card: 0 24px 60px rgba(15, 23, 42, 0.12);
+}
+```
+
+Changing these variables updates buttons, cards, menu, inputs, and backgrounds across the app.
+
+#### Fonts
+
+Fonts are defined in `styles.css` as well. You can:
+
+- swap the Google Fonts import at the top, and
+- update the `font-family` on `body`.
+
+Example:
+
+```css
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+
+body {
+  font-family: "Manrope", "Helvetica Neue", Arial, sans-serif;
+}
+```
 
 ## Common Issues and Fixes
 

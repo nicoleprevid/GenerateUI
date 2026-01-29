@@ -1,10 +1,12 @@
 import fs from 'fs'
 import path from 'path'
 import { generateFeature } from '../generators/angular/feature.generator'
+import { generateAdminFeature } from '../generators/angular/feature.generator'
 import { generateRoutes } from '../generators/angular/routes.generator'
 import { generateMenu } from '../generators/angular/menu.generator'
 import { trackCommand } from '../telemetry'
 import { loadUserConfig } from '../runtime/user-config'
+import { getPermissions } from '../license/permissions'
 import { logDebug, logStep, logTip } from '../runtime/logger'
 
 export async function angular(options: {
@@ -13,6 +15,16 @@ export async function angular(options: {
   telemetryEnabled: boolean
 }) {
   void trackCommand('angular', options.telemetryEnabled)
+
+  let intelligentEnabled = false
+  try {
+    const permissions = await getPermissions()
+    intelligentEnabled = Boolean(
+      permissions.features.intelligentGeneration
+    )
+  } catch {
+    intelligentEnabled = false
+  }
 
   const featuresRoot = resolveFeaturesRoot(options.featuresPath)
   const schemasRoot = resolveSchemasRoot(
@@ -71,11 +83,49 @@ export async function angular(options: {
   fs.mkdirSync(featuresRoot, { recursive: true })
 
   const routes: any[] = []
+  const schemas: Array<{ file: string; schema: any }> = []
+  const appRoot = path.resolve(featuresRoot, '..')
+  const configInfo = findConfig(appRoot)
+  const views = configInfo.config?.views ?? {}
 
   for (const file of screens) {
     const schema = JSON.parse(
       fs.readFileSync(path.join(overlaysDir, file), 'utf-8')
     )
+    schemas.push({ file, schema })
+  }
+
+  const schemaByOpId = new Map<string, any>()
+  for (const { schema } of schemas) {
+    const opId = schema?.api?.operationId
+    if (opId) schemaByOpId.set(opId, schema)
+  }
+
+  for (const { schema } of schemas) {
+    const opId = schema?.api?.operationId
+    const view = opId ? views[opId] : undefined
+    if (view) {
+      schema.meta = {
+        ...(schema.meta ?? {}),
+        view
+      }
+    }
+    if (schema?.meta?.intelligent?.kind === 'adminList') {
+      if (!intelligentEnabled) {
+        logTip(
+          'Intelligent generation is disabled. Login required to generate admin list screens.'
+        )
+        continue
+      }
+      const adminRoute = generateAdminFeature(
+        schema,
+        schemaByOpId,
+        featuresRoot,
+        schemasRoot
+      )
+      routes.push(adminRoute)
+      continue
+    }
 
     const route = generateFeature(schema, featuresRoot, schemasRoot)
     routes.push(route)
@@ -164,6 +214,7 @@ type GenerateUiConfig = {
   menu?: {
     autoInject?: boolean
   }
+  views?: Record<string, string>
 }
 
 function applyAppLayout(featuresRoot: string, schemasRoot: string) {
@@ -254,6 +305,17 @@ function injectDefaultRoute(appRoot: string, value: string) {
       /export const routes\s*=/,
       'export const routes: Routes ='
     )
+  }
+
+  if (
+    content.includes('generatedRoutes') &&
+    !content.match(
+      /import\s+\{\s*generatedRoutes\s*\}\s+from\s+['"].*generate-ui\/routes\.gen['"]/
+    )
+  ) {
+    content =
+      `import { generatedRoutes } from '../generate-ui/routes.gen'\n` +
+      content
   }
 
   content = content.replace(

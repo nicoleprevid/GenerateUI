@@ -57,6 +57,8 @@ export function generateFeature(
   const includeBody = ['post', 'put', 'patch'].includes(method)
   const includeParams =
     pathParams.length > 0 || queryParams.length > 0
+  const shouldAutoRefresh =
+    method === 'get' && !includeParams && !includeBody
 
   const formFields: UiField[] = [
     ...(includeParams
@@ -75,6 +77,7 @@ export function generateFeature(
       : rawName
 
   const subtitle = `${method.toUpperCase()} ${endpoint}`
+  const viewMode = String(schema?.meta?.view || 'table')
   const schemaImportPath = buildSchemaImportPath(
     featureDir,
     schemasRoot,
@@ -91,7 +94,7 @@ export function generateFeature(
   fs.writeFileSync(
     componentPath,
     `
-import { Component } from '@angular/core'
+import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
 import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
@@ -103,6 +106,7 @@ import { UiTextareaComponent } from '../../ui/ui-textarea/ui-textarea.component'
 import { ${name}Service } from './${fileBase}.service.gen'
 import { ${name}Gen } from './${fileBase}.gen'
 import screenSchema from '${schemaImportPath}'
+import { BehaviorSubject } from 'rxjs'
 
 @Component({
   selector: 'app-${toKebab(name)}',
@@ -120,13 +124,77 @@ import screenSchema from '${schemaImportPath}'
   templateUrl: './${fileBase}.component.html',
   styleUrls: ['./${fileBase}.component.scss']
 })
-export class ${name}Component extends ${name}Gen {
+export class ${name}Component extends ${name}Gen implements OnInit, AfterViewInit, OnDestroy {
+  private readonly autoRefresh = ${shouldAutoRefresh}
+  private readonly allowDeepArraySearch = ${method === 'get' && includeParams && !includeBody ? 'false' : 'true'}
+  private readonly onFocus = () => {
+    if (this.autoRefresh && !this.loading) {
+      this.submit()
+    }
+  }
+  private readonly onVisibility = () => {
+    if (
+      this.autoRefresh &&
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'visible'
+    ) {
+      this.submit()
+    }
+  }
+
   constructor(
     protected override fb: FormBuilder,
     protected override service: ${name}Service
   ) {
     super(fb, service)
     this.setSchema(screenSchema as any)
+    this.applyPrefill()
+  }
+
+  ngOnInit() {
+    this.ensureInitialLoad()
+    this.setupAutoRefreshListeners()
+  }
+
+  ngAfterViewInit() {
+    this.ensureInitialLoad()
+  }
+
+  ngOnDestroy() {
+    if (!this.autoRefresh) return
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', this.onFocus)
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibility)
+    }
+  }
+
+  private setupAutoRefreshListeners() {
+    if (!this.autoRefresh) return
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', this.onFocus)
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibility)
+    }
+  }
+
+  private ensureInitialLoad() {
+    if (!this.autoRefresh) return
+    if (this.loading || this.result$.value !== null) return
+    this.submit()
+  }
+
+  private applyPrefill() {
+    const state = (history as any)?.state
+    const prefill = state?.prefill
+    if (prefill) {
+      this.form.patchValue(prefill)
+      if (state?.autoSubmit) {
+        this.submit()
+      }
+    }
   }
 
   submit() {
@@ -136,7 +204,7 @@ export class ${name}Component extends ${name}Gen {
     const body = this.pick(value, this.bodyFieldNames)
 
     this.loading = true
-    this.error = null
+    this.error$.next(null)
 
     this.service
       .execute(pathParams, queryParams, body)
@@ -146,22 +214,22 @@ export class ${name}Component extends ${name}Gen {
             result && typeof result === 'object' && 'body' in result
               ? (result as any).body
               : result
-          this.result = normalized
+          this.result$.next(normalized)
           this.loading = false
         },
         error: error => {
-          this.error = error
+          this.error$.next(error)
           this.loading = false
         }
       })
   }
 
-  isArrayResult() {
-    return this.getRows().length > 0
+  isArrayResult(raw?: any) {
+    return this.getRows(raw).length > 0
   }
 
-  getRows() {
-    const value = this.unwrapResult(this.result)
+  getRows(raw?: any) {
+    const value = this.unwrapResult(raw ?? this.result$.value)
     if (Array.isArray(value)) return value
     if (!value || typeof value !== 'object') return []
 
@@ -170,20 +238,21 @@ export class ${name}Component extends ${name}Gen {
       if (Array.isArray(value[key])) return value[key]
     }
 
+    if (!this.allowDeepArraySearch) return []
     const found = this.findFirstArray(value, 0, 5)
     return found ?? []
   }
 
-  getColumns() {
-    const raw = this.form.get('fields')?.value
-    if (typeof raw === 'string' && raw.trim().length > 0) {
-      return raw
+  getColumns(value?: any) {
+    const fieldsRaw = this.form.get('fields')?.value
+    if (typeof fieldsRaw === 'string' && fieldsRaw.trim().length > 0) {
+      return fieldsRaw
         .split(',')
         .map((value: string) => value.trim())
         .filter(Boolean)
     }
 
-    const rows = this.getRows()
+    const rows = this.getRows(value)
     if (rows.length > 0 && rows[0] && typeof rows[0] === 'object') {
       return Object.keys(rows[0])
     }
@@ -243,20 +312,64 @@ export class ${name}Component extends ${name}Gen {
     return String(value)
   }
 
-  getObjectRows() {
-    const value = this.unwrapResult(this.result)
+  getCardImage(row: any) {
+    if (!row || typeof row !== 'object') return ''
+    const directKeys = ['thumbnail', 'image', 'avatar', 'photo', 'picture']
+    for (const key of directKeys) {
+      if (typeof row[key] === 'string') return row[key]
+    }
+    if (Array.isArray(row.images) && row.images.length) {
+      return row.images[0]
+    }
+    return ''
+  }
+
+  getCardTitle(row: any) {
+    if (!row || typeof row !== 'object') return 'Item'
+    return (
+      row.title ??
+      row.name ??
+      row.label ??
+      row.id ??
+      'Item'
+    )
+  }
+
+  getCardSubtitle(row: any) {
+    if (!row || typeof row !== 'object') return ''
+    return (
+      row.description ??
+      row.category ??
+      row.brand ??
+      ''
+    )
+  }
+
+  formatError(error: any) {
+    if (!error) return ''
+    if (typeof error === 'string') return error
+    if (typeof error?.message === 'string') return error.message
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return String(error)
+    }
+  }
+
+  getObjectRows(raw?: any) {
+    const value = this.unwrapResult(raw ?? this.result$.value)
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return []
     }
     return this.flattenObject(value)
   }
 
-  hasObjectRows() {
-    return this.getObjectRows().length > 0
+  hasObjectRows(raw?: any) {
+    return this.getObjectRows(raw).length > 0
   }
 
-  isSingleValue() {
-    const value = this.unwrapResult(this.result)
+  isSingleValue(raw?: any) {
+    const value = this.unwrapResult(raw ?? this.result$.value)
     return (
       value !== null &&
       value !== undefined &&
@@ -325,6 +438,7 @@ export class ${name}Component extends ${name}Gen {
     `
 import { FormBuilder, FormGroup, Validators } from '@angular/forms'
 import { Injectable } from '@angular/core'
+import { BehaviorSubject } from 'rxjs'
 import { ${name}Service } from './${fileBase}.service.gen'
 
 @Injectable()
@@ -337,8 +451,8 @@ export class ${name}Gen {
   schema: any
 
   loading = false
-  result: any = null
-  error: any = null
+  readonly result$ = new BehaviorSubject<any>(null)
+  readonly error$ = new BehaviorSubject<any>(null)
 
   constructor(
     protected fb: FormBuilder,
@@ -562,7 +676,8 @@ export class ${name}Service {
       formFields,
       actionLabel,
       method,
-      hasForm: formFields.length > 0
+      hasForm: formFields.length > 0,
+      viewMode
     })
   )
 
@@ -573,254 +688,668 @@ export class ${name}Service {
     featureDir,
     `${fileBase}.component.scss`
   )
+  fs.writeFileSync(scssPath, buildBaseScss())
+
+  return {
+    path: toRouteSegment(name),
+    component: `${name}Component`,
+    folder,
+    fileBase
+  }
+}
+
+export function generateAdminFeature(
+  schema: any,
+  schemaByOpId: Map<string, any>,
+  root: string,
+  schemasRoot: string
+) {
+  const smart = schema?.meta?.intelligent ?? {}
+  const adminOpId = String(schema?.api?.operationId || '')
+  const name = toPascalCase(adminOpId)
+  const folder = toFolderName(name)
+  const fileBase = toFileBase(name)
+  const featureDir = path.join(root, folder)
+  fs.mkdirSync(featureDir, { recursive: true })
+
+  const appRoot = path.resolve(root, '..')
+  ensureUiComponents(appRoot, schemasRoot)
+
+  const listOpId = smart.listOperationId
+  const detailOpId = smart.detailOperationId
+  const updateOpId = smart.updateOperationId
+  const deleteOpId = smart.deleteOperationId
+
+  const listSchema = listOpId ? schemaByOpId.get(listOpId) : null
+  const detailSchema = detailOpId ? schemaByOpId.get(detailOpId) : null
+  const updateSchema = updateOpId ? schemaByOpId.get(updateOpId) : null
+  const deleteSchema = deleteOpId ? schemaByOpId.get(deleteOpId) : null
+
+  const listName = listOpId ? toPascalCase(listOpId) : ''
+  const detailName = detailOpId ? toPascalCase(detailOpId) : ''
+  const updateName = updateOpId ? toPascalCase(updateOpId) : ''
+  const deleteName = deleteOpId ? toPascalCase(deleteOpId) : ''
+
+  const listFileBase = listOpId ? toFileBase(listName) : ''
+  const detailFileBase = detailOpId ? toFileBase(detailName) : ''
+  const updateFileBase = updateOpId ? toFileBase(updateName) : ''
+  const deleteFileBase = deleteOpId ? toFileBase(deleteName) : ''
+
+  const listFolder = listOpId ? toFolderName(listName) : ''
+  const detailFolder = detailOpId ? toFolderName(detailName) : ''
+  const updateFolder = updateOpId ? toFolderName(updateName) : ''
+  const deleteFolder = deleteOpId ? toFolderName(deleteName) : ''
+
+  const listServicePath = listOpId
+    ? buildRelativeImportPath(
+        featureDir,
+        path.join(root, listFolder, `${listFileBase}.service.gen`)
+      )
+    : ''
+  const deleteServicePath = deleteOpId
+    ? buildRelativeImportPath(
+        featureDir,
+        path.join(root, deleteFolder, `${deleteFileBase}.service.gen`)
+      )
+    : ''
+
+  const title = smart.label || `${schema.entity || 'Admin'}`
+  const subtitle = listSchema?.api?.endpoint
+    ? `GET ${listSchema.api.endpoint}`
+    : 'Admin list'
+
+  const idParam =
+    detailSchema?.api?.pathParams?.[0]?.name ??
+    smart.idParam ??
+    'id'
+
+  const detailRoute = detailOpId
+    ? normalizeRoutePath(detailOpId)
+    : ''
+  const updateRoute = updateOpId
+    ? normalizeRoutePath(updateOpId)
+    : ''
+
+  const componentPath = path.join(
+    featureDir,
+    `${fileBase}.component.ts`
+  )
+
+  const hasDelete = Boolean(deleteOpId)
+  const hasEdit = Boolean(updateOpId)
+  const hasDetail = Boolean(detailOpId)
+
   fs.writeFileSync(
-    scssPath,
+    componentPath,
     `
-:host {
-  display: block;
-  padding: 24px;
-  min-height: 100vh;
-}
+import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
+import { CommonModule } from '@angular/common'
+import { Router } from '@angular/router'
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
+import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
+import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
+import { UiCheckboxComponent } from '../../ui/ui-checkbox/ui-checkbox.component'
+import { UiInputComponent } from '../../ui/ui-input/ui-input.component'
+import { UiTextareaComponent } from '../../ui/ui-textarea/ui-textarea.component'
+import { UiSelectComponent } from '../../ui/ui-select/ui-select.component'
+import { ${listName}Service } from '${listServicePath}'
+${hasDelete ? `import { ${deleteName}Service } from '${deleteServicePath}'` : ''}
+import { BehaviorSubject, forkJoin } from 'rxjs'
 
-.page {
-  display: grid;
-  gap: 16px;
-  min-height: calc(100vh - 48px);
-}
-
-.screen-description {
-  margin: 0 0 18px;
-  color: #6b7280;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-.form-field {
-  display: grid;
-  gap: 8px;
-}
-
-.field-error {
-  color: #ef4444;
-  font-size: 12px;
-  margin-top: -4px;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 14px;
-  margin-top: 20px;
-  flex-wrap: wrap;
-}
-
-.result {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 12px;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 12px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25);
-  overflow: auto;
-}
-
-.result-table {
-  margin-top: 20px;
-  max-width: 100%;
-  overflow: auto;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
-  -webkit-overflow-scrolling: touch;
-}
-
-.result-card {
-  margin-top: 20px;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
-  padding: 18px;
-}
-
-.result-card__grid {
-  display: grid;
-  gap: 12px;
-}
-
-.result-card__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 10px;
-}
-
-.result-card__row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.result-card__label {
-  font-weight: 600;
-  color: #475569;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-card__value {
-  color: #0f172a;
-  font-weight: 600;
-  text-align: right;
-}
-
-.result-error {
-  margin-top: 24px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  background: #fff1f2;
-  color: #881337;
-  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.15);
-  display: grid;
-  gap: 8px;
-}
-
-.result-error__body {
-  font-size: 13px;
-  color: #7f1d1d;
-  word-break: break-word;
-}
-
-.result-raw {
-  margin-top: 24px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  border: 1px dashed rgba(15, 23, 42, 0.18);
-  background: #f8fafc;
-  color: #0f172a;
-  display: grid;
-  gap: 10px;
-}
-
-.result-raw summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #334155;
-}
-
-.result-raw pre {
-  margin: 0;
-  padding: 12px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.result-single {
-  margin-top: 24px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: #ffffff;
-  color: #0f172a;
-  display: grid;
-  gap: 8px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-}
-
-.result-single__value {
-  font-size: 18px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.data-table {
-  width: max-content;
-  min-width: 100%;
-  border-collapse: collapse;
-  background: #ffffff;
-  font-size: 14px;
-}
-
-.data-table thead {
-  background: #f8fafc;
-}
-
-.data-table th,
-.data-table td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  color: #0f172a;
-  vertical-align: middle;
-}
-
-.data-table th {
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #475569;
-}
-
-.data-table tbody tr:hover {
-  background: #f1f5f9;
-}
-
-.cell-image {
-  width: 44px;
-  height: 28px;
-  object-fit: cover;
-  border-radius: 6px;
-  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.16);
-}
-
-:host ::ng-deep ui-card .ui-card {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 160px);
-}
-
-:host ::ng-deep ui-card .ui-card__body {
-  overflow: auto;
-  min-height: 0;
-}
-
-@media (max-width: 720px) {
-  :host {
-    padding: 18px;
+@Component({
+  selector: 'app-${toKebab(name)}',
+  standalone: true,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    UiCardComponent,
+    UiButtonComponent,
+    UiSelectComponent,
+    UiCheckboxComponent,
+    UiInputComponent,
+    UiTextareaComponent
+  ],
+  templateUrl: './${fileBase}.component.html',
+  styleUrls: ['./${fileBase}.component.scss']
+})
+export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
+  private readonly onFocus = () => {
+    if (!this.loading) {
+      this.refresh()
+    }
+  }
+  private readonly onVisibility = () => {
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'visible'
+    ) {
+      this.refresh()
+    }
   }
 
-  .form-grid {
-    grid-template-columns: 1fr;
-    max-width: 100%;
+  loading = false
+  readonly result$ = new BehaviorSubject<any>(null)
+  readonly error$ = new BehaviorSubject<any>(null)
+  selected = new Set<any>()
+  confirmIds: any[] = []
+  private hasInitialLoad = false
+
+  constructor(
+    private router: Router,
+    private listService: ${listName}Service
+    ${hasDelete ? `, private deleteService: ${deleteName}Service` : ''}
+  ) {
   }
 
-  .actions {
-    justify-content: stretch;
+  ngOnInit() {
+    this.setupAutoRefresh()
+    this.ensureInitialLoad()
+    this.setupAutoRefreshListeners()
+  }
+
+  ngAfterViewInit() {
+    this.ensureInitialLoad()
+  }
+
+  ngOnDestroy() {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', this.onFocus)
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibility)
+    }
+  }
+
+  private setupAutoRefresh() {
+    this.load()
+  }
+
+  private setupAutoRefreshListeners() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', this.onFocus)
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibility)
+    }
+  }
+
+  private ensureInitialLoad() {
+    if (this.hasInitialLoad) return
+    this.hasInitialLoad = true
+    this.load()
+  }
+
+  load() {
+    if (this.loading) return
+    this.loading = true
+    this.error$.next(null)
+    this.listService
+      .execute({}, {}, {})
+      .subscribe({
+        next: result => {
+          const normalized =
+            result && typeof result === 'object' && 'body' in result
+              ? (result as any).body
+              : result
+          this.result$.next(normalized)
+          this.loading = false
+        },
+        error: error => {
+          this.error$.next(error)
+          this.loading = false
+        }
+      })
+  }
+
+  refresh() {
+    this.load()
+  }
+
+  isArrayResult(raw?: any) {
+    return this.getRows(raw).length > 0
+  }
+
+  getRows(raw?: any) {
+    const value = this.unwrapResult(raw ?? this.result$.value)
+    if (Array.isArray(value)) return value
+    if (!value || typeof value !== 'object') return []
+
+    const commonKeys = ['data', 'items', 'results', 'list', 'records', 'products']
+    for (const key of commonKeys) {
+      if (Array.isArray(value[key])) return value[key]
+    }
+
+    const found = this.findFirstArray(value, 0, 5)
+    return found ?? []
+  }
+
+  getColumns(raw?: any) {
+    const rows = this.getRows(raw)
+    if (rows.length > 0 && rows[0] && typeof rows[0] === 'object') {
+      return Object.keys(rows[0])
+    }
+    return []
+  }
+
+  formatHeader(value: string) {
+    return value
+      .replace(/[_-]/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\\b\\w/g, char => char.toUpperCase())
+  }
+
+  getCellValue(row: any, column: string) {
+    if (!row || !column) return ''
+
+    if (column.includes('.')) {
+      return column
+        .split('.')
+        .reduce((acc, key) => (acc ? acc[key] : undefined), row) ?? ''
+    }
+
+    const value = row[column]
+    return this.formatValue(value)
+  }
+
+  isImageCell(row: any, column: string) {
+    const value = this.getCellValue(row, column)
+    return (
+      typeof value === 'string' &&
+      /^https?:\\/\\//.test(value) &&
+      /(\\.png|\\.jpg|\\.jpeg|\\.svg)/i.test(value)
+    )
+  }
+
+  formatValue(value: any): string {
+    if (value === null || value === undefined) return ''
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value)
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No'
+    }
+    if (Array.isArray(value)) {
+      return value
+        .map((item: any) => this.formatValue(item))
+        .join(', ')
+    }
+    if (typeof value === 'object') {
+      if (typeof value.common === 'string') return value.common
+      if (typeof value.official === 'string') return value.official
+      if (typeof value.name === 'string') return value.name
+      if (typeof value.label === 'string') return value.label
+      return JSON.stringify(value)
+    }
+    return String(value)
+  }
+
+  getCardImage(row: any) {
+    if (!row || typeof row !== 'object') return ''
+    const directKeys = ['thumbnail', 'image', 'avatar', 'photo', 'picture']
+    for (const key of directKeys) {
+      if (typeof row[key] === 'string') return row[key]
+    }
+    if (Array.isArray(row.images) && row.images.length) {
+      return row.images[0]
+    }
+    return ''
+  }
+
+  getCardTitle(row: any) {
+    if (!row || typeof row !== 'object') return 'Item'
+    return (
+      row.title ??
+      row.name ??
+      row.label ??
+      row.id ??
+      'Item'
+    )
+  }
+
+  getCardSubtitle(row: any) {
+    if (!row || typeof row !== 'object') return ''
+    return (
+      row.description ??
+      row.category ??
+      row.brand ??
+      ''
+    )
+  }
+
+  formatError(error: any) {
+    if (!error) return ''
+    if (typeof error === 'string') return error
+    if (typeof error?.message === 'string') return error.message
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return String(error)
+    }
+  }
+
+  toggleAll(checked: boolean) {
+    this.selected.clear()
+    if (!checked) return
+    for (const row of this.getRows()) {
+      const id = this.getRowId(row)
+      if (id !== null && id !== undefined) {
+        this.selected.add(id)
+      }
+    }
+  }
+
+  toggleRow(row: any, checked: boolean) {
+    const id = this.getRowId(row)
+    if (id === null || id === undefined) return
+    if (checked) {
+      this.selected.add(id)
+    } else {
+      this.selected.delete(id)
+    }
+  }
+
+  isSelected(row: any) {
+    const id = this.getRowId(row)
+    if (id === null || id === undefined) return false
+    return this.selected.has(id)
+  }
+
+  openDetail(row: any) {
+    ${hasDetail ? '' : 'return'}
+    const id = this.getRowId(row)
+    if (id === null || id === undefined) return
+    this.router.navigate(['${detailRoute}'], {
+      state: { prefill: { ${idParam}: id }, autoSubmit: true }
+    })
+  }
+
+  openEdit(row: any) {
+    ${hasEdit ? '' : 'return'}
+    this.router.navigate(['${updateRoute}'], {
+      state: { prefill: row }
+    })
+  }
+
+  confirmBulkDelete() {
+    this.confirmDelete([...this.selected])
+  }
+
+  confirmDelete(ids: any[]) {
+    this.confirmIds = ids.filter(
+      id => id !== null && id !== undefined
+    )
+  }
+
+  cancelDelete() {
+    this.confirmIds = []
+  }
+
+  deleteConfirmed() {
+    const ids = [...this.confirmIds]
+    this.confirmIds = []
+    if (!ids.length) return
+    ${hasDelete ? `const calls = ids.map(id => this.deleteService.execute({ ${idParam}: id }, {}, {}))` : 'const calls: any[] = []'}
+    if (!calls.length) return
+    forkJoin(calls).subscribe({
+      next: () => {
+        this.removeFromResult(ids)
+        ids.forEach(id => this.selected.delete(id))
+      },
+      error: error => {
+        this.error$.next(error)
+      }
+    })
+  }
+
+  getRowId(row: any) {
+    if (!row || typeof row !== 'object') return null
+    if (row['${idParam}'] !== undefined) return row['${idParam}']
+    if (row['id'] !== undefined) return row['id']
+    return null
+  }
+
+  private unwrapResult(value: any) {
+    if (!value || typeof value !== 'object') return value
+    if (Object.prototype.hasOwnProperty.call(value, 'data')) {
+      return value.data
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'result')) {
+      return value.result
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'body')) {
+      return value.body
+    }
+    return value
+  }
+
+  private removeFromResult(ids: any[]) {
+    const value = this.unwrapResult(this.result$.value)
+    if (Array.isArray(value)) {
+      this.result$.next(value.filter(item => !ids.includes(this.getRowId(item))))
+      return
+    }
+
+    if (!value || typeof value !== 'object') return
+    const key = this.findArrayKey(value)
+    if (!key) return
+    const nextArray = (value[key] as any[]).filter(
+      item => !ids.includes(this.getRowId(item))
+    )
+    this.result$.next({ ...value, [key]: nextArray })
+  }
+
+  private findArrayKey(value: Record<string, any>) {
+    const commonKeys = ['data', 'items', 'results', 'list', 'records', 'products']
+    for (const key of commonKeys) {
+      if (Array.isArray(value[key])) return key
+    }
+    for (const key of Object.keys(value)) {
+      if (Array.isArray(value[key])) return key
+    }
+    return null
+  }
+
+  private findFirstArray(
+    value: any,
+    depth: number,
+    maxDepth: number
+  ): any[] | null {
+    if (!value || depth > maxDepth) return null
+    if (Array.isArray(value)) return value
+    if (typeof value !== 'object') return null
+
+    for (const key of Object.keys(value)) {
+      const found = this.findFirstArray(value[key], depth + 1, maxDepth)
+      if (found) return found
+    }
+    return null
   }
 }
 `
   )
 
+  const htmlPath = path.join(
+    featureDir,
+    `${fileBase}.component.html`
+  )
+
+  const viewMode = String(schema?.meta?.view || 'table')
+  const useCards = viewMode === 'cards'
+  fs.writeFileSync(
+    htmlPath,
+    `
+<div class="page">
+  <ui-card title="${escapeAttr(title)}" subtitle="${escapeAttr(subtitle)}">
+    <div class="actions admin-actions">
+      <ui-button variant="primary" (click)="refresh()">Refresh</ui-button>
+      ${hasDelete ? '<ui-button variant="danger" [disabled]="!selected.size" (click)="confirmBulkDelete()">Delete selected</ui-button>' : ''}
+    </div>
+  </ui-card>
+
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="result$ | async as result">
+    ${useCards ? `
+    <div class="result-cards" *ngIf="isArrayResult(result)">
+      <article class="card-tile" *ngFor="let row of getRows(result)">
+        <div class="card-media" *ngIf="getCardImage(row)">
+          <img [src]="getCardImage(row)" [alt]="getCardTitle(row)" />
+        </div>
+        <div class="card-body">
+          <div class="card-header">
+            ${hasDelete ? '<input type="checkbox" [checked]="isSelected(row)" (click)="$event.stopPropagation()" (change)="toggleRow(row, $event.target.checked)" />' : ''}
+            <h3 class="card-title">{{ getCardTitle(row) }}</h3>
+          </div>
+          <p class="card-subtitle" *ngIf="getCardSubtitle(row)">
+            {{ getCardSubtitle(row) }}
+          </p>
+          <div class="card-actions" (click)="$event.stopPropagation()">
+            ${hasDetail ? '<button class="link" type="button" (click)="openDetail(row)">Details</button>' : ''}
+            ${hasEdit ? '<button class="link" type="button" (click)="openEdit(row)">Edit</button>' : ''}
+            ${hasDelete ? '<button class="link danger" type="button" (click)="confirmDelete([getRowId(row)])">Delete</button>' : ''}
+          </div>
+        </div>
+      </article>
+    </div>
+    ` : `
+    <div class="result-table" *ngIf="isArrayResult(result)">
+      <table class="data-table">
+        <thead>
+          <tr>
+            ${hasDelete ? '<th class="select-cell"><input type="checkbox" (change)="toggleAll($event.target.checked)" /></th>' : ''}
+            <th *ngFor="let column of getColumns(result)">
+              {{ formatHeader(column) }}
+            </th>
+            ${hasDetail || hasEdit || hasDelete ? '<th class="actions-cell">Actions</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of getRows(result)" (click)="openDetail(row)">
+            ${hasDelete ? '<td class="select-cell"><input type="checkbox" [checked]="isSelected(row)" (click)="$event.stopPropagation()" (change)="toggleRow(row, $event.target.checked)" /></td>' : ''}
+            <td *ngFor="let column of getColumns(result)">
+              <img
+                *ngIf="isImageCell(row, column)"
+                [src]="getCellValue(row, column)"
+                [alt]="formatHeader(column)"
+                class="cell-image"
+              />
+              <span *ngIf="!isImageCell(row, column)">
+                {{ getCellValue(row, column) }}
+              </span>
+            </td>
+            ${hasDetail || hasEdit || hasDelete ? `<td class="actions-cell">
+              <div class="row-actions" (click)="$event.stopPropagation()">
+                ${hasDetail ? '<button class="link" type="button" (click)="openDetail(row)">Details</button>' : ''}
+                ${hasEdit ? '<button class="link" type="button" (click)="openEdit(row)">Edit</button>' : ''}
+                ${hasDelete ? '<button class="link danger" type="button" (click)="confirmDelete([getRowId(row)])">Delete</button>' : ''}
+              </div>
+            </td>` : ''}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    `}
+
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+
+  <div class="confirm-backdrop" *ngIf="confirmIds.length">
+    <div class="confirm-modal">
+      <h3>Confirm delete</h3>
+      <p>Are you sure you want to delete the selected item(s)? This action cannot be undone.</p>
+      <div class="actions">
+        <ui-button variant="ghost" (click)="cancelDelete()">Cancel</ui-button>
+        <ui-button variant="danger" (click)="deleteConfirmed()">Delete</ui-button>
+      </div>
+    </div>
+  </div>
+</div>
+`
+  )
+
+  const scssPath = path.join(
+    featureDir,
+    `${fileBase}.component.scss`
+  )
+  fs.writeFileSync(
+    scssPath,
+    `${buildBaseScss()}
+
+.admin-actions {
+  justify-content: space-between;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.row-actions .link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.row-actions .link.danger {
+  color: #dc2626;
+}
+
+.select-cell {
+  width: 48px;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.confirm-modal {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px 22px;
+  width: min(380px, 92vw);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  display: grid;
+  gap: 12px;
+}
+
+.confirm-modal h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.confirm-modal p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+}
+`
+  )
+
   return {
-    path: toRouteSegment(name),
+    path: toRouteSegment(adminOpId),
     component: `${name}Component`,
     folder,
     fileBase
@@ -957,9 +1486,11 @@ function buildComponentHtml(options: {
   actionLabel: string
   method: string
   hasForm: boolean
+  viewMode: string
 }) {
   const buttonVariant =
     options.method === 'delete' ? 'danger' : 'primary'
+  const useCards = options.viewMode === 'cards'
 
   if (!options.hasForm) {
     return `
@@ -976,64 +1507,100 @@ function buildComponentHtml(options: {
     </div>
   </ui-card>
 
-  <div class="result-table" *ngIf="isArrayResult()">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th *ngFor="let column of getColumns()">
-            {{ formatHeader(column) }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let row of getRows()">
-          <td *ngFor="let column of getColumns()">
-            <img
-              *ngIf="isImageCell(row, column)"
-              [src]="getCellValue(row, column)"
-              [alt]="formatHeader(column)"
-              class="cell-image"
-            />
-            <span *ngIf="!isImageCell(row, column)">
-              {{ getCellValue(row, column) }}
-            </span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="result-error" *ngIf="error">
-    <strong>Request failed.</strong>
-    <div class="result-error__body">
-      {{ error?.message || (error | json) }}
-    </div>
-  </div>
-
-  <div class="result-card" *ngIf="!isArrayResult() && hasObjectRows()">
-    <div class="result-card__grid">
-      <div class="result-card__row" *ngFor="let row of getObjectRows()">
-        <span class="result-card__label">
-          {{ formatHeader(row.key) }}
-        </span>
-        <span class="result-card__value">
-          {{ row.value }}
-        </span>
+  ${useCards ? `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
       </div>
     </div>
-  </div>
+  </ng-container>
 
-  <div class="result-single" *ngIf="!isArrayResult() && isSingleValue()">
-    <strong>Result</strong>
-    <div class="result-single__value">
-      {{ formatValue(result) }}
+  <ng-container *ngIf="result$ | async as result">
+    <div class="result-cards" *ngIf="isArrayResult(result)">
+      <article class="card-tile" *ngFor="let row of getRows(result)">
+        <div class="card-media" *ngIf="getCardImage(row)">
+          <img [src]="getCardImage(row)" [alt]="getCardTitle(row)" />
+        </div>
+        <div class="card-body">
+          <h3 class="card-title">{{ getCardTitle(row) }}</h3>
+          <p class="card-subtitle" *ngIf="getCardSubtitle(row)">
+            {{ getCardSubtitle(row) }}
+          </p>
+        </div>
+      </article>
     </div>
-  </div>
 
-  <details class="result-raw" *ngIf="result">
-    <summary>Raw response</summary>
-    <pre>{{ result | json }}</pre>
-  </details>
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  ` : `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="result$ | async as result">
+    <div class="result-table" *ngIf="isArrayResult(result)">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th *ngFor="let column of getColumns(result)">
+              {{ formatHeader(column) }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of getRows(result)">
+            <td *ngFor="let column of getColumns(result)">
+              <img
+                *ngIf="isImageCell(row, column)"
+                [src]="getCellValue(row, column)"
+                [alt]="formatHeader(column)"
+                class="cell-image"
+              />
+              <span *ngIf="!isImageCell(row, column)">
+                {{ getCellValue(row, column) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="result-card" *ngIf="!isArrayResult(result) && hasObjectRows(result)">
+      <div class="result-card__grid">
+        <div class="result-card__row" *ngFor="let row of getObjectRows(result)">
+          <span class="result-card__label">
+            {{ formatHeader(row.key) }}
+          </span>
+          <span class="result-card__value">
+            {{ row.value }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-single" *ngIf="!isArrayResult(result) && isSingleValue(result)">
+      <strong>Result</strong>
+      <div class="result-single__value">
+        {{ formatValue(result) }}
+      </div>
+    </div>
+
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  `}
 </div>
 `
   }
@@ -1105,65 +1672,429 @@ function buildComponentHtml(options: {
     </form>
   </ui-card>
 
-  <div class="result-table" *ngIf="isArrayResult()">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th *ngFor="let column of getColumns()">
-            {{ formatHeader(column) }}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let row of getRows()">
-          <td *ngFor="let column of getColumns()">
-            <img
-              *ngIf="isImageCell(row, column)"
-              [src]="getCellValue(row, column)"
-              [alt]="formatHeader(column)"
-              class="cell-image"
-            />
-            <span *ngIf="!isImageCell(row, column)">
-              {{ getCellValue(row, column) }}
-            </span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="result-error" *ngIf="error">
-    <strong>Request failed.</strong>
-    <div class="result-error__body">
-      {{ error?.message || (error | json) }}
-    </div>
-  </div>
-
-  <div class="result-card" *ngIf="!isArrayResult() && hasObjectRows()">
-    <div class="result-card__grid">
-      <div class="result-card__row" *ngFor="let row of getObjectRows()">
-        <span class="result-card__label">
-          {{ formatHeader(row.key) }}
-        </span>
-        <span class="result-card__value">
-          {{ row.value }}
-        </span>
+  ${useCards ? `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
       </div>
     </div>
-  </div>
+  </ng-container>
 
-  <div class="result-single" *ngIf="!isArrayResult() && isSingleValue()">
-    <strong>Result</strong>
-    <div class="result-single__value">
-      {{ formatValue(result) }}
+  <ng-container *ngIf="result$ | async as result">
+    <div class="result-cards" *ngIf="isArrayResult(result)">
+      <article class="card-tile" *ngFor="let row of getRows(result)">
+        <div class="card-media" *ngIf="getCardImage(row)">
+          <img [src]="getCardImage(row)" [alt]="getCardTitle(row)" />
+        </div>
+        <div class="card-body">
+          <h3 class="card-title">{{ getCardTitle(row) }}</h3>
+          <p class="card-subtitle" *ngIf="getCardSubtitle(row)">
+            {{ getCardSubtitle(row) }}
+          </p>
+        </div>
+      </article>
     </div>
-  </div>
 
-  <details class="result-raw" *ngIf="result">
-    <summary>Raw response</summary>
-    <pre>{{ result | json }}</pre>
-  </details>
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  ` : `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="result$ | async as result">
+    <div class="result-table" *ngIf="isArrayResult(result)">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th *ngFor="let column of getColumns(result)">
+              {{ formatHeader(column) }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of getRows(result)">
+            <td *ngFor="let column of getColumns(result)">
+              <img
+                *ngIf="isImageCell(row, column)"
+                [src]="getCellValue(row, column)"
+                [alt]="formatHeader(column)"
+                class="cell-image"
+              />
+              <span *ngIf="!isImageCell(row, column)">
+                {{ getCellValue(row, column) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="result-card" *ngIf="!isArrayResult(result) && hasObjectRows(result)">
+      <div class="result-card__grid">
+        <div class="result-card__row" *ngFor="let row of getObjectRows(result)">
+          <span class="result-card__label">
+            {{ formatHeader(row.key) }}
+          </span>
+          <span class="result-card__value">
+            {{ row.value }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-single" *ngIf="!isArrayResult(result) && isSingleValue(result)">
+      <strong>Result</strong>
+      <div class="result-single__value">
+        {{ formatValue(result) }}
+      </div>
+    </div>
+
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  `}
 </div>
+`
+}
+
+function buildBaseScss() {
+  return `
+:host {
+  display: block;
+  padding: 24px;
+  min-height: 100vh;
+}
+
+.page {
+  display: grid;
+  gap: 16px;
+  min-height: calc(100vh - 48px);
+}
+
+.screen-description {
+  margin: 0 0 18px;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.form-field {
+  display: grid;
+  gap: 8px;
+}
+
+.field-error {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.result {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25);
+  overflow: auto;
+}
+
+.result-table {
+  margin-top: 20px;
+  max-width: 100%;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  -webkit-overflow-scrolling: touch;
+}
+
+.result-card {
+  margin-top: 20px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  padding: 18px;
+}
+
+.result-card__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.result-card__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 10px;
+}
+
+.result-card__row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.result-card__label {
+  font-weight: 600;
+  color: #475569;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-card__value {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
+}
+
+.result-cards {
+  margin-top: 20px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.card-tile {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  display: grid;
+  gap: 12px;
+}
+
+.card-media img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.card-body {
+  padding: 14px 16px 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.card-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.card-actions .link {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.card-actions .link:hover {
+  background: #f8fafc;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.card-actions .link.danger {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #b91c1c;
+  background: #fff1f2;
+}
+
+.card-actions .link.danger:hover {
+  background: #ffe4e6;
+}
+
+.result-error {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #fff1f2;
+  color: #881337;
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.15);
+  display: grid;
+  gap: 8px;
+}
+
+.result-error__body {
+  font-size: 13px;
+  color: #7f1d1d;
+  word-break: break-word;
+}
+
+.result-raw {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  background: #f8fafc;
+  color: #0f172a;
+  display: grid;
+  gap: 10px;
+}
+
+.result-raw summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #334155;
+}
+
+.result-raw pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.result-single {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  color: #0f172a;
+  display: grid;
+  gap: 8px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.result-single__value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.data-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  font-size: 14px;
+}
+
+.data-table thead {
+  background: #f8fafc;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+  color: #0f172a;
+  vertical-align: middle;
+}
+
+.data-table th {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.data-table tbody tr:hover {
+  background: #f1f5f9;
+}
+
+.cell-image {
+  width: 44px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.16);
+}
+
+:host ::ng-deep ui-card .ui-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 160px);
+}
+
+:host ::ng-deep ui-card .ui-card__body {
+  overflow: auto;
+  min-height: 0;
+}
+
+@media (max-width: 720px) {
+  :host {
+    padding: 18px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+}
 `
 }
 
@@ -2301,6 +3232,14 @@ function toPascalCase(value: string) {
     .filter(Boolean)
     .map(part => part[0].toUpperCase() + part.slice(1))
     .join('')
+}
+
+function normalizeRoutePath(value: string) {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return trimmed
+  if (trimmed.includes('/')) return trimmed.replace(/^\//, '')
+  const pascal = toPascalCase(trimmed)
+  return toRouteSegment(pascal)
 }
 
 function buildSchemaImportPath(

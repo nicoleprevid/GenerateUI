@@ -16,6 +16,23 @@ interface GeneratedRoute {
   group?: string | null
 }
 
+type ResourceOp = {
+  operationId: string
+  method: string
+  path: string
+  tag?: string
+}
+
+type ResourceIndex = {
+  basePath: string
+  list?: ResourceOp
+  detail?: ResourceOp
+  update?: ResourceOp
+  remove?: ResourceOp
+  idParam?: string | null
+  tag?: string
+}
+
 export async function generate(options: {
   openapi: string
   output?: string
@@ -64,6 +81,7 @@ export async function generate(options: {
    */
   const routes: GeneratedRoute[] = []
   const usedOperationIds = new Set<string>()
+  const resourceMap = new Map<string, ResourceIndex>()
 
   const permissions = await getPermissions()
   const device = loadDeviceIdentity()
@@ -108,6 +126,14 @@ export async function generate(options: {
           usedOperationIds
         )
       operationIds.add(operationId)
+
+      recordResourceOp(
+        resourceMap,
+        pathKey,
+        method.toLowerCase(),
+        operationId,
+        op
+      )
 
       const endpoint = {
         operationId,
@@ -196,6 +222,76 @@ export async function generate(options: {
       console.log(`✔ Generated ${operationId}`)
     }
   }
+
+  const canOverride = permissions.features.uiOverrides
+  const canRegenerateSafely = permissions.features.safeRegeneration
+  const intelligentEnabled = Boolean(
+    permissions.features.intelligentGeneration
+  )
+  const viewDefaults: Array<{ key: string; view: string }> = []
+
+  if (intelligentEnabled) {
+    const adminSchemas = buildAdminSchemas(
+      resourceMap,
+      usedOperationIds
+    )
+    for (const admin of adminSchemas) {
+      const fileName = `${admin.api.operationId}.screen.json`
+      const generatedPath = path.join(generatedDir, fileName)
+      fs.writeFileSync(
+        generatedPath,
+        JSON.stringify(admin, null, 2)
+      )
+
+      const overlayPath = path.join(overlaysDir, fileName)
+      if (canOverride && canRegenerateSafely) {
+        const overlay = fs.existsSync(overlayPath)
+          ? JSON.parse(fs.readFileSync(overlayPath, 'utf-8'))
+          : null
+
+        const merged = mergeScreen(
+          admin,
+          overlay,
+          null,
+          {
+            openapiVersion: api?.info?.version || 'unknown',
+            debug: options.debug
+          }
+        )
+
+        fs.writeFileSync(
+          overlayPath,
+          JSON.stringify(merged.screen, null, 2)
+        )
+      } else if (!fs.existsSync(overlayPath)) {
+        fs.writeFileSync(
+          overlayPath,
+          JSON.stringify(admin, null, 2)
+        )
+      }
+
+      routes.push({
+        path: admin.api.operationId,
+        operationId: admin.api.operationId,
+        label: admin.meta?.intelligent?.label,
+        group: admin.meta?.intelligent?.group ?? null
+      })
+
+      viewDefaults.push({
+        key: admin.api.operationId,
+        view: 'cards'
+      })
+      if (admin.meta?.intelligent?.listOperationId) {
+        viewDefaults.push({
+          key: admin.meta.intelligent.listOperationId,
+          view: 'list'
+        })
+      }
+
+      operationIds.add(admin.api.operationId)
+      console.log(`✨ Generated ${admin.api.operationId}`)
+    }
+  }
   logStep(`Screens generated: ${routes.length}`)
 
   /**
@@ -211,19 +307,45 @@ export async function generate(options: {
   /**
    * 4.3️⃣ Gera generateui-config.json (não sobrescreve)
    */
-  const configPath = path.join(generateUiRoot, '..', '..', 'generateui-config.json')
+  const configPath = path.join(
+    generateUiRoot,
+    '..',
+    '..',
+    'generateui-config.json'
+  )
+  let configPayload: any = null
   if (!fs.existsSync(configPath)) {
-    const defaultConfig = {
+    configPayload = {
       appTitle: 'Generate UI',
       defaultRoute: '',
       menu: {
         autoInject: true
-      }
+      },
+      views: {}
     }
-    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2))
+    fs.writeFileSync(configPath, JSON.stringify(configPayload, null, 2))
     logDebug(`Config created: ${configPath}`)
   } else {
+    try {
+      configPayload = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    } catch {
+      configPayload = null
+    }
     logDebug(`Config found: ${configPath}`)
+  }
+
+  if (configPayload && viewDefaults.length) {
+    configPayload.views = configPayload.views || {}
+    for (const entry of viewDefaults) {
+      if (!configPayload.views[entry.key]) {
+        configPayload.views[entry.key] = entry.view
+      }
+    }
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(configPayload, null, 2)
+    )
+    logDebug(`Config views updated: ${configPath}`)
   }
 
   /**
@@ -368,6 +490,118 @@ function inferRouteGroup(op: any, pathKey: string) {
   return segment ? segment : null
 }
 
+function recordResourceOp(
+  map: Map<string, ResourceIndex>,
+  pathKey: string,
+  method: string,
+  operationId: string,
+  op: any
+) {
+  const isItemPath = /\/{[^}]+}$/.test(pathKey)
+  const basePath = isItemPath
+    ? pathKey.replace(/\/{[^}]+}$/, '')
+    : pathKey
+  const paramMatch = isItemPath
+    ? pathKey.match(/\/{([^}]+)}$/)
+    : null
+  const idParam = paramMatch ? paramMatch[1] : null
+  const tag =
+    Array.isArray(op?.tags) && op.tags.length
+      ? String(op.tags[0]).trim()
+      : undefined
+
+  const entry =
+    map.get(basePath) || ({
+      basePath
+    } as ResourceIndex)
+
+  if (tag && !entry.tag) entry.tag = tag
+  if (idParam && !entry.idParam) entry.idParam = idParam
+
+  const payload: ResourceOp = {
+    operationId,
+    method,
+    path: pathKey,
+    tag
+  }
+
+  if (!isItemPath && method === 'get') entry.list = payload
+  if (isItemPath && method === 'get') entry.detail = payload
+  if (isItemPath && (method === 'put' || method === 'patch')) {
+    entry.update = payload
+  }
+  if (isItemPath && method === 'delete') entry.remove = payload
+
+  map.set(basePath, entry)
+}
+
+function buildAdminSchemas(
+  resources: Map<string, ResourceIndex>,
+  usedOperationIds: Set<string>
+) {
+  const adminSchemas: any[] = []
+
+  for (const resource of resources.values()) {
+    if (!resource.list) continue
+
+    const entity = inferEntityName(resource.basePath)
+    const baseId = toPascalCase(entity)
+    const baseOpId = `${baseId}Admin`
+    let operationId = baseOpId
+    let index = 2
+    while (usedOperationIds.has(operationId)) {
+      operationId = `${baseOpId}${index}`
+      index += 1
+    }
+    usedOperationIds.add(operationId)
+
+    const label = `${toLabel(entity)} Admin`
+    const group = resource.tag ? resource.tag : inferGroup(resource.basePath)
+
+    adminSchemas.push({
+      meta: {
+        intelligent: {
+          kind: 'adminList',
+          label,
+          group,
+          listOperationId: resource.list.operationId,
+          detailOperationId: resource.detail?.operationId ?? null,
+          updateOperationId: resource.update?.operationId ?? null,
+          deleteOperationId: resource.remove?.operationId ?? null,
+          idParam: resource.idParam ?? null
+        }
+      },
+      entity: toLabel(entity),
+      description:
+        'Smart admin list generated from collection endpoints.',
+      api: {
+        operationId,
+        method: 'get',
+        endpoint: resource.list.path
+      }
+    })
+  }
+
+  return adminSchemas
+}
+
+function inferEntityName(pathKey: string) {
+  const segments = String(pathKey || '')
+    .split('/')
+    .filter(Boolean)
+  if (!segments.length) return 'Resource'
+  const last = segments[segments.length - 1]
+  return last.replace(/[^a-zA-Z0-9]+/g, ' ')
+}
+
+function inferGroup(pathKey: string) {
+  const segment = String(pathKey || '')
+    .split('/')
+    .map(part => part.trim())
+    .filter(Boolean)[0]
+  return segment ? segment : null
+}
+
 function buildMenuFromRoutes(routes: GeneratedRoute[]) {
   const groups: any[] = []
   const ungrouped: any[] = []
@@ -417,6 +651,14 @@ function toLabel(value: string) {
     .replace(/[_-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function toPascalCase(value: string) {
+  return String(value)
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join('')
 }
 
 function httpVerbToPrefix(verb: string) {
