@@ -3,13 +3,18 @@ import path from 'path'
 
 export function generateRoutes(
   routes: any[],
-  featuresRoot: string,
+  generatedRoot: string,
+  overridesRoot: string,
   schemasRoot: string
 ) {
   const out = path.join(schemasRoot, 'routes.gen.ts')
-  const featuresImportBase = buildRelativeImportBase(
+  const generatedImportBase = buildRelativeImportBase(
     schemasRoot,
-    featuresRoot
+    generatedRoot
+  )
+  const overridesImportBase = buildRelativeImportBase(
+    schemasRoot,
+    overridesRoot
   )
 
   fs.mkdirSync(path.dirname(out), { recursive: true })
@@ -20,10 +25,18 @@ import { Routes } from '@angular/router'
 export const generatedRoutes: Routes = [
 ${routes
   .flatMap(r => {
+    const overridePath = path.join(
+      overridesRoot,
+      r.folder,
+      `${r.fileBase}.component.ts`
+    )
+    const importBase = fs.existsSync(overridePath)
+      ? overridesImportBase
+      : generatedImportBase
     const baseImport = ensureRelativeImport(
       toPosixPath(
         path.join(
-          featuresImportBase,
+          importBase,
           r.folder,
           `${r.fileBase}.component`
         )

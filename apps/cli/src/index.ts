@@ -3,6 +3,7 @@ import { Command } from 'commander'
 import { generate } from './commands/generate'
 import { angular } from './commands/angular'
 import { login } from './commands/login'
+import { merge } from './commands/merge'
 import { getCliVersion } from './runtime/config'
 import {
   trackCliStarted,
@@ -97,6 +98,44 @@ program
     setVerbose(Boolean(dev || verbose))
     try {
       await login({ telemetryEnabled: telemetry })
+    } catch (error) {
+      handleCliError(error)
+    }
+  })
+
+/**
+ * 4️⃣ Compare generated vs overrides (interactive)
+ */
+program
+  .command('merge')
+  .description('Compare generated vs overrides with an interactive diff tool')
+  .requiredOption('--feature <name>', 'Feature folder or operationId')
+  .option(
+    '-f, --features <path>',
+    'Angular features output directory'
+  )
+  .option(
+    '--file <name>',
+    'File to compare: component.ts, component.html, component.scss, or all'
+  )
+  .option(
+    '--tool <name>',
+    'Diff tool (code, meld, kdiff3, bc, or any executable)'
+  )
+  .action(async (options) => {
+    const { telemetry, dev, verbose } = program.opts<{
+      telemetry: boolean
+      dev?: boolean
+      verbose?: boolean
+    }>()
+    setVerbose(Boolean(dev || verbose))
+    try {
+      await merge({
+        featuresPath: options.features,
+        feature: options.feature,
+        file: options.file,
+        tool: options.tool
+      })
     } catch (error) {
       handleCliError(error)
     }

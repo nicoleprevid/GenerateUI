@@ -27,11 +27,15 @@ export async function angular(options: {
   }
 
   const featuresRoot = resolveFeaturesRoot(options.featuresPath)
+  const generatedFeaturesRoot = path.join(featuresRoot, 'generated')
+  const overridesFeaturesRoot = path.join(featuresRoot, 'overrides')
   const schemasRoot = resolveSchemasRoot(
     options.schemasPath,
     featuresRoot
   )
   logStep(`Features output: ${featuresRoot}`)
+  logDebug(`Generated features: ${generatedFeaturesRoot}`)
+  logDebug(`Overrides: ${overridesFeaturesRoot}`)
   logStep(`Schemas input: ${schemasRoot}`)
 
   /**
@@ -81,6 +85,8 @@ export async function angular(options: {
    * Onde gerar as features Angular
    */
   fs.mkdirSync(featuresRoot, { recursive: true })
+  fs.mkdirSync(generatedFeaturesRoot, { recursive: true })
+  fs.mkdirSync(overridesFeaturesRoot, { recursive: true })
 
   const routes: any[] = []
   const schemas: Array<{ file: string; schema: any }> = []
@@ -121,21 +127,55 @@ export async function angular(options: {
         schema,
         schemaByOpId,
         featuresRoot,
+        generatedFeaturesRoot,
         schemasRoot
       )
       routes.push(adminRoute)
       continue
     }
 
-    const route = generateFeature(schema, featuresRoot, schemasRoot)
+    const route = generateFeature(
+      schema,
+      featuresRoot,
+      generatedFeaturesRoot,
+      schemasRoot
+    )
     routes.push(route)
   }
 
-  generateRoutes(routes, featuresRoot, schemasRoot)
+  migrateLegacyFeatures(
+    routes,
+    featuresRoot,
+    generatedFeaturesRoot,
+    overridesFeaturesRoot
+  )
+  syncOverrides(routes, generatedFeaturesRoot, overridesFeaturesRoot)
+
+  generateRoutes(
+    routes,
+    generatedFeaturesRoot,
+    overridesFeaturesRoot,
+    schemasRoot
+  )
   generateMenu(schemasRoot)
   applyAppLayout(featuresRoot, schemasRoot)
 
   console.log(`✔ Angular features generated at ${featuresRoot}`)
+  const overrides = findOverrides(
+    routes,
+    overridesFeaturesRoot,
+    generatedFeaturesRoot
+  )
+  if (overrides.length) {
+    console.log('')
+    console.log('ℹ Overrides detected:')
+    for (const override of overrides) {
+      console.log(
+        `  - ${override.component}: run "generate-ui merge --feature ${override.component.replace(/Component$/, '')}"`
+      )
+    }
+    console.log('')
+  }
   logTip('Run with --dev to see detailed logs and file paths.')
 }
 
@@ -215,6 +255,77 @@ type GenerateUiConfig = {
     autoInject?: boolean
   }
   views?: Record<string, string>
+}
+
+function findOverrides(
+  routes: Array<{ folder: string; fileBase: string; component: string }>,
+  overridesRoot: string,
+  generatedRoot: string
+) {
+  const results: Array<{
+    component: string
+    generatedPath: string
+    overridePath: string
+  }> = []
+  for (const route of routes) {
+    const overridePath = path.join(
+      overridesRoot,
+      route.folder,
+      `${route.fileBase}.component.ts`
+    )
+    if (fs.existsSync(overridePath)) {
+      results.push({
+        component: route.component,
+        generatedPath: path.join(
+          generatedRoot,
+          route.folder,
+          `${route.fileBase}.component.ts`
+        ),
+        overridePath
+      })
+    }
+  }
+  return results
+}
+
+function syncOverrides(
+  routes: Array<{ folder: string }>,
+  generatedRoot: string,
+  overridesRoot: string
+) {
+  for (const route of routes) {
+    const sourceDir = path.join(generatedRoot, route.folder)
+    const targetDir = path.join(overridesRoot, route.folder)
+    if (!fs.existsSync(sourceDir)) continue
+    if (fs.existsSync(targetDir)) continue
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true })
+    fs.cpSync(sourceDir, targetDir, { recursive: true })
+  }
+}
+
+function migrateLegacyFeatures(
+  routes: Array<{ folder: string }>,
+  featuresRoot: string,
+  generatedRoot: string,
+  overridesRoot: string
+) {
+  let migrated = false
+  for (const route of routes) {
+    const legacyDir = path.join(featuresRoot, route.folder)
+    const generatedDir = path.join(generatedRoot, route.folder)
+    const overrideDir = path.join(overridesRoot, route.folder)
+    if (!fs.existsSync(legacyDir)) continue
+    if (fs.existsSync(generatedDir) || fs.existsSync(overrideDir)) {
+      continue
+    }
+    fs.mkdirSync(path.dirname(generatedDir), { recursive: true })
+    fs.cpSync(legacyDir, generatedDir, { recursive: true })
+    fs.cpSync(legacyDir, overrideDir, { recursive: true })
+    migrated = true
+  }
+  if (migrated) {
+    console.log('ℹ Legacy feature folders detected. Seeded generated/overrides.')
+  }
 }
 
 function applyAppLayout(featuresRoot: string, schemasRoot: string) {

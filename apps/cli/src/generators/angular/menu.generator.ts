@@ -142,7 +142,7 @@ function buildMenuFromRoutes(routes: any[] | null): MenuConfig | null {
 
     const item: MenuItem = {
       id: String(route.operationId),
-      label: String(route.label ?? route.operationId),
+      label: toLabel(String(route.label ?? route.operationId)),
       route: normalizeRoutePath(
         String(route.path ?? route.operationId ?? '')
       )
@@ -179,10 +179,16 @@ function toKebab(value: string) {
 }
 
 function toLabel(value: string) {
-  return String(value)
+  return stripDiacritics(String(value))
     .replace(/[_-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\\b\\w/g, char => char.toUpperCase())
+}
+
+function stripDiacritics(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 function normalizeRoutePath(value: string) {

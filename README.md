@@ -4,6 +4,7 @@ Generate CRUD screens (List, Create/Edit, Delete), typed API services, and route
 
 Goal: stop rewriting repetitive CRUD and start with a functional, scalable UI foundation.
 
+![Example ](image.png)
 ## What GenerateUI Does
 
 Given an `openapi.yaml` (or `.json`), GenerateUI can generate:
@@ -57,7 +58,7 @@ GenerateUI works in two main steps:
 ## 1) Generate `screens.json`
 
 ```bash
-generate-ui generate --openapi openapiWeather.yaml
+generate-ui generate --openapi youropenapi.yaml
 ```
 
 What happens after this command:
@@ -94,6 +95,31 @@ What happens after this command:
   - route definitions
   - `menu.json` and `menu.gen.ts` (if present in `generate-ui/`)
 
+Generated/overrides folders:
+
+- `features/generated/` → generated code (always overwritten)
+- `features/overrides/` → your custom edits (never overwritten)
+
+Routes prefer `overrides/` when a matching file exists.
+
+Tip: when you regenerate and want to see what changed, compare files with:
+
+```bash
+diff -u features/generated/<Feature>/<Feature>.component.ts \
+  features/overrides/<Feature>/<Feature>.component.ts
+```
+
+Interactive merge (pick which changes to keep):
+
+```bash
+generate-ui merge --feature ProductsAdmin
+```
+
+Options:
+
+- `--file component.ts|component.html|component.scss|all`
+- `--tool code|meld|kdiff3|bc` (default: `code`)
+
 What you should review now:
 
 - Are files generated in the correct location?
@@ -107,8 +133,23 @@ If your project uses custom routing, standalone components, or advanced layouts,
 Defaults:
 - `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
 - `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
+- Generated files are placed under `features/generated/` and your manual edits go in `features/overrides/`
 
-### Smart admin screens (Dev plan)
+## Optional paths:
+
+```bash
+generate-ui angular \
+  --schemas /path/to/generate-ui \
+  --features /path/to/angular/features
+```
+
+Custom output folder for `generate`:
+
+```bash
+generate-ui generate --openapi youropenapi.yaml --output /path/to/generate-ui
+```
+
+## Smart admin screens (Dev plan)
 
 When you are logged in and Dev features are enabled, GenerateUI creates **one Admin screen per entity** when it finds a collection GET endpoint.
 
@@ -181,19 +222,6 @@ Example `menu.overrides.json`:
 }
 ```
 
-Optional paths:
-
-```bash
-generate-ui angular \
-  --schemas /path/to/generate-ui \
-  --features /path/to/angular/features
-```
-
-Custom output folder for `generate`:
-
-```bash
-generate-ui generate --openapi youropenapi.yaml --output /path/to/generate-ui
-```
 
 ## Login (Dev plan)
 
@@ -404,7 +432,6 @@ Check:
 - [ ] Layout presets (minimal / enterprise / dashboard)
 - [ ] Design system adapters (Material / PrimeNG / custom)
 - [ ] Filters and real pagination
-- [ ] UI schema overrides (visual control without touching OpenAPI)
 - [ ] React support
 
 ## Contributing

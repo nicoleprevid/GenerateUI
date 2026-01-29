@@ -16,7 +16,8 @@ type UiField = {
 
 export function generateFeature(
   schema: any,
-  root: string,
+  featuresRoot: string,
+  generatedRoot: string,
   schemasRoot: string
 ) {
   const rawName = schema.api.operationId
@@ -24,10 +25,10 @@ export function generateFeature(
   const folder = toFolderName(name)
   const fileBase = toFileBase(name)
 
-  const featureDir = path.join(root, folder)
+  const featureDir = path.join(generatedRoot, folder)
   fs.mkdirSync(featureDir, { recursive: true })
 
-  const appRoot = path.resolve(root, '..')
+  const appRoot = path.resolve(featuresRoot, '..')
   ensureUiComponents(appRoot, schemasRoot)
 
   const method = String(schema.api.method || '').toLowerCase()
@@ -701,7 +702,8 @@ export class ${name}Service {
 export function generateAdminFeature(
   schema: any,
   schemaByOpId: Map<string, any>,
-  root: string,
+  featuresRoot: string,
+  generatedRoot: string,
   schemasRoot: string
 ) {
   const smart = schema?.meta?.intelligent ?? {}
@@ -709,10 +711,10 @@ export function generateAdminFeature(
   const name = toPascalCase(adminOpId)
   const folder = toFolderName(name)
   const fileBase = toFileBase(name)
-  const featureDir = path.join(root, folder)
+  const featureDir = path.join(generatedRoot, folder)
   fs.mkdirSync(featureDir, { recursive: true })
 
-  const appRoot = path.resolve(root, '..')
+  const appRoot = path.resolve(featuresRoot, '..')
   ensureUiComponents(appRoot, schemasRoot)
 
   const listOpId = smart.listOperationId
@@ -743,13 +745,13 @@ export function generateAdminFeature(
   const listServicePath = listOpId
     ? buildRelativeImportPath(
         featureDir,
-        path.join(root, listFolder, `${listFileBase}.service.gen`)
+        path.join(generatedRoot, listFolder, `${listFileBase}.service.gen`)
       )
     : ''
   const deleteServicePath = deleteOpId
     ? buildRelativeImportPath(
         featureDir,
-        path.join(root, deleteFolder, `${deleteFileBase}.service.gen`)
+        path.join(generatedRoot, deleteFolder, `${deleteFileBase}.service.gen`)
       )
     : ''
 
@@ -1435,7 +1437,7 @@ function defaultValueFor(type: string) {
 }
 
 function toLabel(value: string) {
-  return String(value)
+  return stripDiacritics(String(value))
     .replace(/[_-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, char => char.toUpperCase())
@@ -1443,6 +1445,12 @@ function toLabel(value: string) {
 
 function toPlaceholder(value: string) {
   return toLabel(value)
+}
+
+function stripDiacritics(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 function normalizeWhitespace(value: string) {

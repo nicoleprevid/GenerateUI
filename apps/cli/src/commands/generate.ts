@@ -647,10 +647,16 @@ function toKebab(value: string) {
 }
 
 function toLabel(value: string) {
-  return String(value)
+  return stripDiacritics(String(value))
     .replace(/[_-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function stripDiacritics(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 }
 
 function toPascalCase(value: string) {
