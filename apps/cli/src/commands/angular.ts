@@ -293,6 +293,14 @@ function syncOverrides(
   generatedRoot: string,
   overridesRoot: string
 ) {
+  const overridesEmpty =
+    fs.existsSync(overridesRoot) &&
+    fs.readdirSync(overridesRoot).length === 0
+  if (overridesEmpty && fs.existsSync(generatedRoot)) {
+    fs.cpSync(generatedRoot, overridesRoot, { recursive: true })
+    console.log('ℹ Seeded overrides from generated (initial sync).')
+    return
+  }
   for (const route of routes) {
     const sourceDir = path.join(generatedRoot, route.folder)
     const targetDir = path.join(overridesRoot, route.folder)

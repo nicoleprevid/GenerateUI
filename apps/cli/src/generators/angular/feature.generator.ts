@@ -92,18 +92,43 @@ export function generateFeature(
     featureDir,
     `${fileBase}.component.ts`
   )
+  const uiCardImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-card', 'ui-card.component')
+  )
+  const uiButtonImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-button', 'ui-button.component')
+  )
+  const uiSelectImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-select', 'ui-select.component')
+  )
+  const uiCheckboxImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-checkbox', 'ui-checkbox.component')
+  )
+  const uiInputImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-input', 'ui-input.component')
+  )
+  const uiTextareaImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-textarea', 'ui-textarea.component')
+  )
+
   fs.writeFileSync(
     componentPath,
     `
 import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
-import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
-import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
-import { UiSelectComponent } from '../../ui/ui-select/ui-select.component'
-import { UiCheckboxComponent } from '../../ui/ui-checkbox/ui-checkbox.component'
-import { UiInputComponent } from '../../ui/ui-input/ui-input.component'
-import { UiTextareaComponent } from '../../ui/ui-textarea/ui-textarea.component'
+import { UiCardComponent } from '${uiCardImport}'
+import { UiButtonComponent } from '${uiButtonImport}'
+import { UiSelectComponent } from '${uiSelectImport}'
+import { UiCheckboxComponent } from '${uiCheckboxImport}'
+import { UiInputComponent } from '${uiInputImport}'
+import { UiTextareaComponent } from '${uiTextareaImport}'
 import { ${name}Service } from './${fileBase}.service.gen'
 import { ${name}Gen } from './${fileBase}.gen'
 import screenSchema from '${schemaImportPath}'
@@ -210,7 +235,7 @@ export class ${name}Component extends ${name}Gen implements OnInit, AfterViewIni
     this.service
       .execute(pathParams, queryParams, body)
       .subscribe({
-        next: result => {
+        next: (result: any) => {
           const normalized =
             result && typeof result === 'object' && 'body' in result
               ? (result as any).body
@@ -218,7 +243,7 @@ export class ${name}Component extends ${name}Gen implements OnInit, AfterViewIni
           this.result$.next(normalized)
           this.loading = false
         },
-        error: error => {
+        error: (error: any) => {
           this.error$.next(error)
           this.loading = false
         }
@@ -781,6 +806,31 @@ export function generateAdminFeature(
   const hasEdit = Boolean(updateOpId)
   const hasDetail = Boolean(detailOpId)
 
+  const uiCardImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-card', 'ui-card.component')
+  )
+  const uiButtonImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-button', 'ui-button.component')
+  )
+  const uiCheckboxImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-checkbox', 'ui-checkbox.component')
+  )
+  const uiInputImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-input', 'ui-input.component')
+  )
+  const uiTextareaImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-textarea', 'ui-textarea.component')
+  )
+  const uiSelectImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-select', 'ui-select.component')
+  )
+
   fs.writeFileSync(
     componentPath,
     `
@@ -788,12 +838,12 @@ import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Router } from '@angular/router'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
-import { UiCardComponent } from '../../ui/ui-card/ui-card.component'
-import { UiButtonComponent } from '../../ui/ui-button/ui-button.component'
-import { UiCheckboxComponent } from '../../ui/ui-checkbox/ui-checkbox.component'
-import { UiInputComponent } from '../../ui/ui-input/ui-input.component'
-import { UiTextareaComponent } from '../../ui/ui-textarea/ui-textarea.component'
-import { UiSelectComponent } from '../../ui/ui-select/ui-select.component'
+import { UiCardComponent } from '${uiCardImport}'
+import { UiButtonComponent } from '${uiButtonImport}'
+import { UiCheckboxComponent } from '${uiCheckboxImport}'
+import { UiInputComponent } from '${uiInputImport}'
+import { UiTextareaComponent } from '${uiTextareaImport}'
+import { UiSelectComponent } from '${uiSelectImport}'
 import { ${listName}Service } from '${listServicePath}'
 ${hasDelete ? `import { ${deleteName}Service } from '${deleteServicePath}'` : ''}
 import { BehaviorSubject, forkJoin } from 'rxjs'
@@ -888,7 +938,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     this.listService
       .execute({}, {}, {})
       .subscribe({
-        next: result => {
+        next: (result: any) => {
           const normalized =
             result && typeof result === 'object' && 'body' in result
               ? (result as any).body
@@ -896,7 +946,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
           this.result$.next(normalized)
           this.loading = false
         },
-        error: error => {
+        error: (error: any) => {
           this.error$.next(error)
           this.loading = false
         }
@@ -3223,7 +3273,7 @@ function toFolderName(operationId: string) {
 }
 
 function toFileBase(operationId: string) {
-  return operationId
+  return String(operationId).replace(/[\\/]/g, '')
 }
 
 function toKebab(value: string) {

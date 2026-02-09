@@ -112,6 +112,7 @@ export async function generate(options: {
    * Itera por todos os endpoints
    */
   const operationIds = new Set<string>()
+  const operationFileNames = new Set<string>()
 
   for (const [pathKey, pathItem] of Object.entries(paths)) {
     for (const [method, rawOp] of Object.entries(pathItem as any)) {
@@ -126,6 +127,7 @@ export async function generate(options: {
           usedOperationIds
         )
       operationIds.add(operationId)
+      operationFileNames.add(toSafeFileName(operationId))
 
       recordResourceOp(
         resourceMap,
@@ -150,7 +152,7 @@ export async function generate(options: {
        * Gera o ScreenSchema completo
        */
       const screenSchema = generateScreen(endpoint, api)
-      const fileName = `${operationId}.screen.json`
+      const fileName = `${toSafeFileName(operationId)}.screen.json`
 
       /**
        * 1️⃣ generated → SEMPRE sobrescrito (base técnica)
@@ -236,7 +238,7 @@ export async function generate(options: {
       usedOperationIds
     )
     for (const admin of adminSchemas) {
-      const fileName = `${admin.api.operationId}.screen.json`
+      const fileName = `${toSafeFileName(admin.api.operationId)}.screen.json`
       const generatedPath = path.join(generatedDir, fileName)
       fs.writeFileSync(
         generatedPath,
@@ -289,6 +291,7 @@ export async function generate(options: {
       }
 
       operationIds.add(admin.api.operationId)
+      operationFileNames.add(toSafeFileName(admin.api.operationId))
       console.log(`✨ Generated ${admin.api.operationId}`)
     }
   }
@@ -379,7 +382,7 @@ export async function generate(options: {
 
   for (const file of overlayFiles) {
     const opId = file.replace(/\.screen\.json$/, '')
-    if (!operationIds.has(opId)) {
+    if (!operationFileNames.has(opId)) {
       fs.rmSync(path.join(overlaysDir, file))
       if (options.debug) {
         console.log(`✖ Removed overlay ${opId}`)
@@ -651,6 +654,12 @@ function toLabel(value: string) {
     .replace(/[_-]/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function toSafeFileName(value: string) {
+  return String(value)
+    .replace(/[\\/]/g, '-')
+    .replace(/\s+/g, '-')
 }
 
 function stripDiacritics(value: string) {
