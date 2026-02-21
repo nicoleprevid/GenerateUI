@@ -8,6 +8,11 @@ import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
 import { trackCommand } from '../telemetry'
 import { updateUserConfig } from '../runtime/user-config'
 import { logDebug, logStep, logTip } from '../runtime/logger'
+import {
+  findProjectConfig,
+  pickConfiguredPath,
+  resolveOptionalPath
+} from '../runtime/project-config'
 
 interface GeneratedRoute {
   path: string
@@ -34,18 +39,37 @@ type ResourceIndex = {
 }
 
 export async function generate(options: {
-  openapi: string
+  openapi?: string
   output?: string
   debug?: boolean
   telemetryEnabled: boolean
 }) {
   void trackCommand('generate', options.telemetryEnabled)
 
+  const projectConfig = findProjectConfig(process.cwd())
+  const configuredOpenApi = pickConfiguredPath(
+    projectConfig.config,
+    'openapi'
+  )
+  const configuredOutput =
+    pickConfiguredPath(projectConfig.config, 'output') ??
+    pickConfiguredPath(projectConfig.config, 'schemas')
+  const openApiPath = resolveOptionalPath(
+    options.openapi,
+    configuredOpenApi,
+    projectConfig.configPath
+  )
+  if (!openApiPath) {
+    throw new Error(
+      'Missing OpenAPI file.\n' +
+        'Use --openapi <path> or set "openapi" (or "paths.openapi") in generateui-config.json.'
+    )
+  }
+
   /**
    * Caminho absoluto do OpenAPI (YAML)
    * Ex: /Users/.../generateui-playground/realWorldOpenApi.yaml
    */
-  const openApiPath = path.resolve(process.cwd(), options.openapi)
   logStep(`OpenAPI: ${openApiPath}`)
 
   /**
@@ -59,7 +83,11 @@ export async function generate(options: {
    */
   const generateUiRoot = resolveGenerateUiRoot(
     projectRoot,
-    options.output
+    resolveOptionalPath(
+      options.output,
+      configuredOutput,
+      projectConfig.configPath
+    ) ?? undefined
   )
   logStep(`Schemas output: ${generateUiRoot}`)
 
@@ -82,6 +110,8 @@ export async function generate(options: {
   const routes: GeneratedRoute[] = []
   const usedOperationIds = new Set<string>()
   const resourceMap = new Map<string, ResourceIndex>()
+  const screenByOpId = new Map<string, any>()
+  const viewDefaults: Array<{ key: string; view: string }> = []
 
   const permissions = await getPermissions()
   const device = loadDeviceIdentity()
@@ -152,6 +182,7 @@ export async function generate(options: {
        * Gera o ScreenSchema completo
        */
       const screenSchema = generateScreen(endpoint, api)
+      screenByOpId.set(operationId, screenSchema)
       const fileName = `${toSafeFileName(operationId)}.screen.json`
 
       /**
@@ -220,6 +251,10 @@ export async function generate(options: {
         ),
         group: inferRouteGroup(op, pathKey)
       })
+      viewDefaults.push({
+        key: operationId,
+        view: 'list'
+      })
 
       console.log(`✔ Generated ${operationId}`)
     }
@@ -230,12 +265,12 @@ export async function generate(options: {
   const intelligentEnabled = Boolean(
     permissions.features.intelligentGeneration
   )
-  const viewDefaults: Array<{ key: string; view: string }> = []
 
   if (intelligentEnabled) {
     const adminSchemas = buildAdminSchemas(
       resourceMap,
-      usedOperationIds
+      usedOperationIds,
+      screenByOpId
     )
     for (const admin of adminSchemas) {
       const fileName = `${toSafeFileName(admin.api.operationId)}.screen.json`
@@ -398,10 +433,10 @@ export async function generate(options: {
   console.log('')
   console.log('🎉 Next steps')
   console.log('  1) Generate Angular code:')
-  console.log('     generate-ui angular --schemas <your-generate-ui> --features <your-app>/src/app/features')
+  console.log('     generate-ui angular')
   console.log('  2) Customize screens in generate-ui/overlays/')
   console.log('  3) Customize menu in generate-ui/menu.overrides.json (created once, never overwritten)')
-  console.log('  4) Edit generateui-config.json to set appTitle/defaultRoute/menu.autoInject')
+  console.log('  4) Edit generateui-config.json to set appTitle/defaultRoute/menu.autoInject/views')
   console.log('')
   logTip('Run with --dev to see detailed logs and file paths.')
 }
@@ -411,17 +446,14 @@ function resolveGenerateUiRoot(
   output?: string
 ) {
   if (output) {
-    return path.resolve(process.cwd(), output)
+    return path.isAbsolute(output)
+      ? output
+      : path.resolve(process.cwd(), output)
   }
 
   const srcRoot = path.join(projectRoot, 'src')
   if (fs.existsSync(srcRoot)) {
     return path.join(srcRoot, 'generate-ui')
-  }
-
-  const frontendSrcRoot = path.join(projectRoot, 'frontend', 'src')
-  if (fs.existsSync(frontendSrcRoot)) {
-    return path.join(frontendSrcRoot, 'generate-ui')
   }
 
   return path.join(projectRoot, 'generate-ui')
@@ -540,7 +572,8 @@ function recordResourceOp(
 
 function buildAdminSchemas(
   resources: Map<string, ResourceIndex>,
-  usedOperationIds: Set<string>
+  usedOperationIds: Set<string>,
+  screenByOpId: Map<string, any>
 ) {
   const adminSchemas: any[] = []
 
@@ -560,6 +593,20 @@ function buildAdminSchemas(
 
     const label = `${toLabel(entity)} Admin`
     const group = resource.tag ? resource.tag : inferGroup(resource.basePath)
+    const listSchema = screenByOpId.get(resource.list.operationId)
+    const columns =
+      listSchema?.data?.table?.columns &&
+      Array.isArray(listSchema.data.table.columns)
+        ? listSchema.data.table.columns
+        : []
+    const responseFormat =
+      listSchema?.response?.format === 'cards' ||
+      listSchema?.response?.format === 'raw' ||
+      listSchema?.response?.format === 'table'
+        ? listSchema.response.format
+        : columns.length > 0
+          ? 'table'
+          : null
 
     adminSchemas.push({
       meta: {
@@ -577,6 +624,14 @@ function buildAdminSchemas(
       entity: toLabel(entity),
       description:
         'Smart admin list generated from collection endpoints.',
+      data: {
+        table: {
+          columns
+        }
+      },
+      response: responseFormat
+        ? { format: responseFormat }
+        : undefined,
       api: {
         operationId,
         method: 'get',

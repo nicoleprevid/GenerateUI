@@ -21,15 +21,15 @@ function inferScreen(method: string, hasInput: boolean) {
 
 function inferActions(method: string, hasInput: boolean) {
   if (method === 'get' && hasInput) {
-    return { primary: { type: 'submit', label: 'Buscar' } }
+    return { primary: { type: 'submit', label: 'Search' } }
   }
 
   if (method === 'post') {
-    return { primary: { type: 'submit', label: 'Criar' } }
+    return { primary: { type: 'submit', label: 'Create' } }
   }
 
   if (method === 'put' || method === 'patch') {
-    return { primary: { type: 'submit', label: 'Salvar' } }
+    return { primary: { type: 'submit', label: 'Save' } }
   }
 
   return {}
@@ -67,6 +67,17 @@ export function generateScreen(endpoint: any, api?: any) {
     openapiVersion
   )
 
+  const columnKeys =
+    method === 'get'
+      ? inferResponseColumns(endpoint)
+      : []
+  const responseFormat = inferResponseFormat(endpoint)
+  const columns = columnKeys.map(key => ({
+    key,
+    label: toLabel(key),
+    visible: true
+  }))
+
   return {
     meta: screenMeta,
     entity: endpoint.summary
@@ -88,8 +99,100 @@ export function generateScreen(endpoint: any, api?: any) {
     layout: { type: 'single' },
     fields: decorateFields(fields, 'body', openapiVersion),
     actions: inferActions(method, hasInput),
-    data: {}
+    response: responseFormat
+      ? { format: responseFormat }
+      : undefined,
+    data: {
+      table: {
+        columns
+      }
+    }
   }
+}
+
+function inferResponseColumns(endpoint: any) {
+  const schema = getPrimaryResponseSchema(endpoint)
+  if (!schema) return []
+  return inferColumnsFromSchema(schema)
+}
+
+function inferResponseFormat(endpoint: any): 'table' | null {
+  const schema = getPrimaryResponseSchema(endpoint)
+  if (!schema) return null
+  if (!hasResponseData(schema)) return null
+  return 'table'
+}
+
+function getPrimaryResponseSchema(endpoint: any) {
+  const responses = endpoint?.responses ?? {}
+  const candidate =
+    responses['200'] ||
+    responses['201'] ||
+    responses.default ||
+    Object.values(responses)[0]
+  return candidate?.content?.['application/json']?.schema ?? null
+}
+
+function hasResponseData(schema: any): boolean {
+  if (!schema) return false
+  if (Array.isArray(schema.allOf)) {
+    return schema.allOf.some((entry: any) =>
+      hasResponseData(entry)
+    )
+  }
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.some((entry: any) =>
+      hasResponseData(entry)
+    )
+  }
+  if (Array.isArray(schema.oneOf)) {
+    return schema.oneOf.some((entry: any) =>
+      hasResponseData(entry)
+    )
+  }
+  if (schema.type === 'array') return true
+  if (
+    schema.type === 'object' &&
+    (schema.properties || schema.additionalProperties)
+  ) {
+    return true
+  }
+  return inferColumnsFromSchema(schema).length > 0
+}
+
+function inferColumnsFromSchema(schema: any): string[] {
+  if (!schema) return []
+
+  if (Array.isArray(schema.allOf)) {
+    for (const entry of schema.allOf) {
+      const columns = inferColumnsFromSchema(entry)
+      if (columns.length) return columns
+    }
+  }
+
+  if (schema.type === 'array') {
+    return inferColumnsFromSchema(schema.items)
+  }
+
+  if (schema.type === 'object' && schema.properties) {
+    const commonKeys = [
+      'data',
+      'items',
+      'results',
+      'list',
+      'records',
+      'products'
+    ]
+    for (const key of commonKeys) {
+      const nested = schema.properties[key]
+      const columns = inferColumnsFromSchema(nested)
+      if (columns.length) return columns
+    }
+
+    return Object.keys(schema.properties)
+  }
+
+  return []
 }
 
 function extractQueryParams(endpoint: any, api?: any) {

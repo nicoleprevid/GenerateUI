@@ -55,10 +55,63 @@ GenerateUI works in two main steps:
 1. Read the OpenAPI and generate `screens.json`
 2. Generate Angular code from `screens.json`
 
+## Recommended Setup (No Paths in Commands)
+
+Create `generateui-config.json` at the root of your Angular project:
+
+```json
+{
+  "openapi": "openapi.yaml",
+  "schemas": "src/generate-ui",
+  "features": "src/app/features",
+  "appTitle": "Store",
+  "defaultRoute": "",
+  "menu": {
+    "autoInject": true
+  },
+  "views": {
+    "ProductsAdmin": "cards",
+    "getProducts": "list",
+    "CharacterAdmin": "cards"
+  }
+}
+```
+
+Note: `list` is treated as table-style rendering.
+
+## Complete Step-by-Step
+
+1. Configure `generateui-config.json` at the project root.
+2. Run schema generation:
+
+```bash
+generate-ui generate
+```
+
+3. Review generated files in `src/generate-ui/overlays`.
+4. Run Angular generation:
+
+```bash
+generate-ui angular
+```
+
+`generate-ui angular` keeps live sync while editing `*.screen.json`.
+To run once and exit, use:
+
+```bash
+generate-ui angular --no-watch
+```
+
+5. If needed, review generated vs override changes:
+
+```bash
+generate-ui merge --feature ProductsAdmin
+```
+
 ## 1) Generate `screens.json`
 
 ```bash
-generate-ui generate --openapi youropenapi.yaml
+generate-ui generate
 ```
 
 What happens after this command:
@@ -131,23 +184,9 @@ Note:
 If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
 
 Defaults:
-- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
-- `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
+- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./generate-ui`)
+- `--features` defaults to `./src/app/features`
 - Generated files are placed under `features/generated/` and your manual edits go in `features/overrides/`
-
-## Optional paths:
-
-```bash
-generate-ui angular \
-  --schemas /path/to/generate-ui \
-  --features /path/to/angular/features
-```
-
-Custom output folder for `generate`:
-
-```bash
-generate-ui generate --openapi youropenapi.yaml --output /path/to/generate-ui
-```
 
 ## Smart admin screens (Dev plan)
 
@@ -166,7 +205,7 @@ If the API also includes:
 
 The Admin list is generated in addition to the basic screens (list, get by id, create, update, delete). It is never a replacement.
 
-### generateui-config.json (optional)
+### generateui-config.json
 
 GenerateUI creates a `generateui-config.json` at your project root on first `generate`. You can edit it to:
 
@@ -178,10 +217,18 @@ Example:
 
 ```json
 {
-  "appTitle": "Rick & Morty Admin",
-  "defaultRoute": "GetCharacter",
+  "openapi": "openapi.yaml",
+  "schemas": "src/generate-ui",
+  "features": "src/app/features",
+  "appTitle": "Store",
+  "defaultRoute": "",
   "menu": {
     "autoInject": true
+  },
+  "views": {
+    "ProductsAdmin": "cards",
+    "getProducts": "list",
+    "CharacterAdmin": "cards"
   }
 }
 ```
@@ -270,7 +317,7 @@ Step-by-step:
 1) Generate files:
 
 ```bash
-generate-ui generate --openapi /path/to/openapi.yaml
+generate-ui generate
 generate-ui angular
 ```
 
@@ -338,6 +385,31 @@ You can edit files inside `overlays/` to customize labels, placeholders, hints, 
 
 Even after the Angular TypeScript files are generated, changes you make in `overlays/` will be mirrored the next time you regenerate.
 
+You can also set response rendering directly in each `*.screen.json` using `response.format`:
+- `table` (default for screens with response data)
+- `cards`
+- `raw`
+
+For table screens, `data.table.columns` is generated with all detected response columns. You can edit:
+- `label` to rename the column header
+- `visible` to hide/show the column
+
+Example:
+
+```json
+{
+  "data": {
+    "table": {
+      "columns": [
+        { "key": "name", "label": "Nome", "visible": true },
+        { "key": "createdAt", "label": "Criado em", "visible": true },
+        { "key": "internalId", "label": "ID Interno", "visible": false }
+      ]
+    }
+  }
+}
+```
+
 
 ### Theme / colors / fonts (quick change)
 
@@ -378,13 +450,14 @@ body {
 
 ## Common Issues and Fixes
 
-### "required option '-o, --openapi <path>' not specified"
+### "Missing OpenAPI file"
 
-You ran the command without passing the OpenAPI file.
+`generate-ui generate` did not find `openapi` in `generateui-config.json`.
 
 Fix:
 ```bash
-generate-ui generate --openapi /path/to/openapi.yaml
+# configure "openapi" in generateui-config.json and run again
+generate-ui generate
 ```
 
 ### "An endpoint exists but no screen was generated"

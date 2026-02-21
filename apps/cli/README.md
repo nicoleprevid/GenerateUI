@@ -55,11 +55,66 @@ GenerateUI works in two main steps:
 1. Read the OpenAPI and generate `screens.json`
 2. Generate Angular code from `screens.json`
 
+## Recommended Setup (No Paths in Commands)
+
+Create `generateui-config.json` at the root of your Angular project:
+
+```json
+{
+  "openapi": "openapi.yaml",
+  "schemas": "src/generate-ui",
+  "features": "src/app/features",
+  "appTitle": "Store",
+  "defaultRoute": "",
+  "menu": {
+    "autoInject": true
+  },
+  "views": {
+    "ProductsAdmin": "cards",
+    "getProducts": "list",
+    "CharacterAdmin": "cards"
+  }
+}
+```
+
+Note: `list` is treated as table-style rendering.
+
+## Complete Step-by-Step
+
+1. Configure `generateui-config.json` at the project root.
+2. Run schema generation:
+
+```bash
+generate-ui generate
+```
+
+3. Review generated files in `src/generate-ui/overlays`.
+4. Run Angular generation:
+
+```bash
+generate-ui angular
+```
+
+`generate-ui angular` keeps live sync while editing `*.screen.json`.
+To run once and exit, use:
+
+```bash
+generate-ui angular --no-watch
+```
+
+5. If needed, review generated vs override changes:
+
+```bash
+generate-ui merge --feature ProductsAdmin
+```
+
 ## 1) Generate `screens.json`
 
 ```bash
-generate-ui generate --openapi youropenapi.yaml
+generate-ui generate
 ```
+
+`generate-ui generate` reads paths from `generateui-config.json` when available.
 
 What happens after this command:
 
@@ -131,23 +186,9 @@ Note:
 If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
 
 Defaults:
-- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./frontend/src/generate-ui` / `./generate-ui`)
-- `--features` defaults to `./src/app/features` when `./src/app` exists; otherwise it errors and asks for `--features`
+- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./generate-ui`)
+- `--features` defaults to `./src/app/features`
 - Generated files are placed under `features/generated/` and your manual edits go in `features/overrides/`
-
-## Optional paths:
-
-```bash
-generate-ui angular \
-  --schemas /path/to/generate-ui \
-  --features /path/to/angular/features
-```
-
-Custom output folder for `generate`:
-
-```bash
-generate-ui generate --openapi youropenapi.yaml --output /path/to/generate-ui
-```
 
 ## Smart admin screens (Dev plan)
 
@@ -166,7 +207,7 @@ If the API also includes:
 
 The Admin list is generated in addition to the basic screens (list, get by id, create, update, delete). It is never a replacement.
 
-### generateui-config.json (optional)
+### generateui-config.json
 
 GenerateUI creates a `generateui-config.json` at your project root on first `generate`. You can edit it to:
 
@@ -178,10 +219,18 @@ Example:
 
 ```json
 {
-  "appTitle": "Rick & Morty Admin",
-  "defaultRoute": "GetCharacter",
+  "openapi": "openapi.yaml",
+  "schemas": "src/generate-ui",
+  "features": "src/app/features",
+  "appTitle": "Store",
+  "defaultRoute": "",
   "menu": {
     "autoInject": true
+  },
+  "views": {
+    "ProductsAdmin": "cards",
+    "getProducts": "list",
+    "CharacterAdmin": "cards"
   }
 }
 ```
@@ -244,7 +293,7 @@ Telemetry can be disabled by setting `telemetry=false` in `~/.generateui/config.
 
 GenerateUI usually creates route files such as:
 
-- `src/generate-ui/routes.gen.ts` or `frontend/src/generate-ui/routes.gen.ts` or `generate-ui/routes.gen.ts`
+- `src/generate-ui/routes.gen.ts` or `generate-ui/routes.gen.ts`
 
 Example (Angular Router):
 
@@ -270,7 +319,7 @@ Step-by-step:
 1) Generate files:
 
 ```bash
-generate-ui generate --openapi /path/to/openapi.yaml
+generate-ui generate
 generate-ui angular
 ```
 
@@ -305,13 +354,13 @@ npm ls @angular/router
 ## Example Generated Structure
 
 ```txt
-src/generate-ui/ or frontend/src/generate-ui/ or generate-ui/
+src/generate-ui/ or generate-ui/
   generated/
   overlays/
   routes.json
   routes.gen.ts
   screens.json
-frontend/src/app/features/
+src/app/features/
   users/
     users.component.ts
     users.service.gen.ts
@@ -378,13 +427,14 @@ body {
 
 ## Common Issues and Fixes
 
-### "required option '-o, --openapi <path>' not specified"
+### "Missing OpenAPI file"
 
-You ran the command without passing the OpenAPI file.
+`generate-ui generate` did not find `openapi` in `generateui-config.json`.
 
 Fix:
 ```bash
-generate-ui generate --openapi /path/to/openapi.yaml
+# set "openapi" in generateui-config.json and run:
+generate-ui generate
 ```
 
 ### "An endpoint exists but no screen was generated"

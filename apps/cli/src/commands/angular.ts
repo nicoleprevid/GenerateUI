@@ -8,10 +8,17 @@ import { trackCommand } from '../telemetry'
 import { loadUserConfig } from '../runtime/user-config'
 import { getPermissions } from '../license/permissions'
 import { logDebug, logStep, logTip } from '../runtime/logger'
+import {
+  findProjectConfig,
+  pickConfiguredPath,
+  resolveOptionalPath,
+  type GenerateUiProjectConfig
+} from '../runtime/project-config'
 
 export async function angular(options: {
   schemasPath?: string
   featuresPath?: string
+  watch?: boolean
   telemetryEnabled: boolean
 }) {
   void trackCommand('angular', options.telemetryEnabled)
@@ -26,11 +33,26 @@ export async function angular(options: {
     intelligentEnabled = false
   }
 
-  const featuresRoot = resolveFeaturesRoot(options.featuresPath)
+  const projectConfig = findProjectConfig(process.cwd())
+  const configuredFeatures = pickConfiguredPath(
+    projectConfig.config,
+    'features'
+  )
+  const configuredSchemas =
+    pickConfiguredPath(projectConfig.config, 'schemas') ??
+    pickConfiguredPath(projectConfig.config, 'output')
+
+  const featuresRoot = resolveFeaturesRoot(
+    options.featuresPath,
+    configuredFeatures,
+    projectConfig.configPath
+  )
   const generatedFeaturesRoot = path.join(featuresRoot, 'generated')
   const overridesFeaturesRoot = path.join(featuresRoot, 'overrides')
   const schemasRoot = resolveSchemasRoot(
     options.schemasPath,
+    configuredSchemas,
+    projectConfig.configPath,
     featuresRoot
   )
   logStep(`Features output: ${featuresRoot}`)
@@ -49,55 +71,124 @@ export async function angular(options: {
 
   const overlaysDir = path.join(schemasRoot, 'overlays')
 
-  if (!fs.existsSync(overlaysDir)) {
-    const example = [
-      'generate-ui angular \\',
-      '  --schemas /path/to/generate-ui \\',
-      '  --features /path/to/src/app/features'
-    ].join('\n')
+  await generateAngularOnce({
+    overlaysDir,
+    featuresRoot,
+    generatedFeaturesRoot,
+    overridesFeaturesRoot,
+    schemasRoot,
+    intelligentEnabled
+  })
+
+  if (!options.watch) {
+    logTip('Run with --dev to see detailed logs and file paths.')
+    return
+  }
+
+  console.log(`👀 Watching ${overlaysDir} for .screen.json changes...`)
+  let debounceTimer: NodeJS.Timeout | null = null
+
+  const rerun = (fileName: string) => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(async () => {
+      console.log(`↻ Change detected: ${fileName}`)
+      try {
+        await generateAngularOnce({
+          overlaysDir,
+          featuresRoot,
+          generatedFeaturesRoot,
+          overridesFeaturesRoot,
+          schemasRoot,
+          intelligentEnabled
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unexpected error'
+        console.error(message)
+      }
+    }, 180)
+  }
+
+  const watcher = fs.watch(overlaysDir, (event, fileName) => {
+    if (!fileName) return
+    if (!String(fileName).endsWith('.screen.json')) return
+    if (event !== 'change' && event !== 'rename') return
+    rerun(String(fileName))
+  })
+
+  const closeWatcher = () => {
+    watcher.close()
+    console.log('\nStopped screen watch.')
+    process.exit(0)
+  }
+
+  process.on('SIGINT', closeWatcher)
+  process.on('SIGTERM', closeWatcher)
+}
+
+async function generateAngularOnce(options: {
+  overlaysDir: string
+  featuresRoot: string
+  generatedFeaturesRoot: string
+  overridesFeaturesRoot: string
+  schemasRoot: string
+  intelligentEnabled: boolean
+}) {
+  if (!fs.existsSync(options.overlaysDir)) {
     throw new Error(
-      `Overlays directory not found: ${overlaysDir}\n` +
-        'Run `generate-ui generate --openapi <path> --output <schemas>` first to create overlays.\n' +
-        `Example:\n${example}`
+      `Overlays directory not found: ${options.overlaysDir}\n` +
+        'Run `generate-ui generate` first to create overlays.\n' +
+        'If needed, configure "openapi", "schemas", and "features" in generateui-config.json.'
     )
   }
-  logDebug(`Overlays dir: ${overlaysDir}`)
+  logDebug(`Overlays dir: ${options.overlaysDir}`)
 
   const screens = fs
-    .readdirSync(overlaysDir)
+    .readdirSync(options.overlaysDir)
     .filter(f => f.endsWith('.screen.json'))
   logDebug(`Screens found: ${screens.length}`)
 
   if (screens.length === 0) {
-    const example = [
-      'generate-ui angular \\',
-      '  --schemas /path/to/generate-ui \\',
-      '  --features /path/to/src/app/features'
-    ].join('\n')
     throw new Error(
-      `No .screen.json files found in: ${overlaysDir}\n` +
-        'Run again with --schemas pointing to your generate-ui folder.\n' +
-        `Example:\n${example}`
+      `No .screen.json files found in: ${options.overlaysDir}\n` +
+        'Run `generate-ui generate` and then `generate-ui angular`.\n' +
+        'If needed, set "schemas" (or "paths.schemas") in generateui-config.json.'
     )
   }
 
-  /**
-   * Onde gerar as features Angular
-   */
-  fs.mkdirSync(featuresRoot, { recursive: true })
-  fs.mkdirSync(generatedFeaturesRoot, { recursive: true })
-  fs.mkdirSync(overridesFeaturesRoot, { recursive: true })
+  fs.mkdirSync(options.featuresRoot, { recursive: true })
+  fs.mkdirSync(options.generatedFeaturesRoot, { recursive: true })
+  fs.mkdirSync(options.overridesFeaturesRoot, { recursive: true })
 
   const routes: any[] = []
   const schemas: Array<{ file: string; schema: any }> = []
-  const appRoot = path.resolve(featuresRoot, '..')
+  const appRoot = path.resolve(options.featuresRoot, '..')
   const configInfo = findConfig(appRoot)
   const views = configInfo.config?.views ?? {}
+  const generatedSchemasDir = path.join(options.schemasRoot, 'generated')
 
   for (const file of screens) {
-    const schema = JSON.parse(
-      fs.readFileSync(path.join(overlaysDir, file), 'utf-8')
+    let schema = JSON.parse(
+      fs.readFileSync(path.join(options.overlaysDir, file), 'utf-8')
     )
+    const generatedPath = path.join(generatedSchemasDir, file)
+    if (fs.existsSync(generatedPath)) {
+      try {
+        const generatedSchema = JSON.parse(
+          fs.readFileSync(generatedPath, 'utf-8')
+        )
+        const normalized = enforceScreenShape(
+          schema,
+          generatedSchema
+        )
+        schema = normalized.schema
+        for (const warning of normalized.warnings) {
+          console.warn(warning)
+        }
+      } catch {
+        // Ignore malformed generated schema and keep overlay as source.
+      }
+    }
     schemas.push({ file, schema })
   }
 
@@ -117,7 +208,7 @@ export async function angular(options: {
       }
     }
     if (schema?.meta?.intelligent?.kind === 'adminList') {
-      if (!intelligentEnabled) {
+      if (!options.intelligentEnabled) {
         logTip(
           'Intelligent generation is disabled. Login required to generate admin list screens.'
         )
@@ -126,9 +217,9 @@ export async function angular(options: {
       const adminRoute = generateAdminFeature(
         schema,
         schemaByOpId,
-        featuresRoot,
-        generatedFeaturesRoot,
-        schemasRoot
+        options.featuresRoot,
+        options.generatedFeaturesRoot,
+        options.schemasRoot
       )
       routes.push(adminRoute)
       continue
@@ -136,35 +227,39 @@ export async function angular(options: {
 
     const route = generateFeature(
       schema,
-      featuresRoot,
-      generatedFeaturesRoot,
-      schemasRoot
+      options.featuresRoot,
+      options.generatedFeaturesRoot,
+      options.schemasRoot
     )
     routes.push(route)
   }
 
   migrateLegacyFeatures(
     routes,
-    featuresRoot,
-    generatedFeaturesRoot,
-    overridesFeaturesRoot
+    options.featuresRoot,
+    options.generatedFeaturesRoot,
+    options.overridesFeaturesRoot
   )
-  syncOverrides(routes, generatedFeaturesRoot, overridesFeaturesRoot)
+  syncOverrides(
+    routes,
+    options.generatedFeaturesRoot,
+    options.overridesFeaturesRoot
+  )
 
   generateRoutes(
     routes,
-    generatedFeaturesRoot,
-    overridesFeaturesRoot,
-    schemasRoot
+    options.generatedFeaturesRoot,
+    options.overridesFeaturesRoot,
+    options.schemasRoot
   )
-  generateMenu(schemasRoot)
-  applyAppLayout(featuresRoot, schemasRoot)
+  generateMenu(options.schemasRoot)
+  applyAppLayout(options.featuresRoot, options.schemasRoot)
 
-  console.log(`✔ Angular features generated at ${featuresRoot}`)
+  console.log(`✔ Angular features generated at ${options.featuresRoot}`)
   const overrides = findOverrides(
     routes,
-    overridesFeaturesRoot,
-    generatedFeaturesRoot
+    options.overridesFeaturesRoot,
+    options.generatedFeaturesRoot
   )
   if (overrides.length) {
     console.log('')
@@ -176,15 +271,81 @@ export async function angular(options: {
     }
     console.log('')
   }
-  logTip('Run with --dev to see detailed logs and file paths.')
+}
+
+function enforceScreenShape(overlay: any, generated: any) {
+  const warnings: string[] = []
+  const next = overlay ?? {}
+
+  const generatedType = generated?.screen?.type
+  const overlayType = next?.screen?.type
+  if (
+    generatedType &&
+    overlayType &&
+    String(overlayType) !== String(generatedType)
+  ) {
+    next.screen = { ...(next.screen ?? {}), type: generatedType }
+    warnings.push(
+      `⚠ Ignored overlay change: screen.type is fixed by generation (${generatedType}).`
+    )
+  }
+
+  const generatedMode = generated?.screen?.mode
+  const overlayMode = next?.screen?.mode
+  if (
+    generatedMode &&
+    overlayMode &&
+    String(overlayMode) !== String(generatedMode)
+  ) {
+    next.screen = { ...(next.screen ?? {}), mode: generatedMode }
+    warnings.push(
+      `⚠ Ignored overlay change: screen.mode is fixed by generation (${generatedMode}).`
+    )
+  }
+
+  const generatedMethod = generated?.api?.method
+  const overlayMethod = next?.api?.method
+  if (
+    generatedMethod &&
+    overlayMethod &&
+    String(overlayMethod).toLowerCase() !==
+      String(generatedMethod).toLowerCase()
+  ) {
+    next.api = { ...(next.api ?? {}), method: generatedMethod }
+    warnings.push(
+      `⚠ Ignored overlay change: api.method is fixed by generation (${generatedMethod}).`
+    )
+  }
+
+  const generatedOpId = generated?.api?.operationId
+  const overlayOpId = next?.api?.operationId
+  if (
+    generatedOpId &&
+    overlayOpId &&
+    String(overlayOpId) !== String(generatedOpId)
+  ) {
+    next.api = { ...(next.api ?? {}), operationId: generatedOpId }
+    warnings.push(
+      `⚠ Ignored overlay change: api.operationId is fixed by generation (${generatedOpId}).`
+    )
+  }
+
+  return { schema: next, warnings }
 }
 
 function resolveSchemasRoot(
   value: string | undefined,
+  configured: string | null,
+  configPath: string | null,
   featuresRoot: string
 ) {
-  if (value) {
-    return path.resolve(process.cwd(), value)
+  const fromConfig = resolveOptionalPath(
+    value,
+    configured,
+    configPath
+  )
+  if (fromConfig) {
+    return fromConfig
   }
 
   const inferred = inferSchemasRootFromFeatures(featuresRoot)
@@ -193,26 +354,29 @@ function resolveSchemasRoot(
   return resolveDefaultSchemasRoot()
 }
 
-function resolveFeaturesRoot(value?: string) {
-  if (value) {
-    const resolved = path.resolve(process.cwd(), value)
-    const isSrcApp =
-      path.basename(resolved) === 'app' &&
-      path.basename(path.dirname(resolved)) === 'src'
-    if (isSrcApp) {
-      return path.join(resolved, 'features')
-    }
-    return resolved
+function resolveFeaturesRoot(
+  value: string | undefined,
+  configured: string | null,
+  configPath: string | null
+) {
+  const fromConfig = resolveOptionalPath(
+    value,
+    configured,
+    configPath
+  )
+  if (fromConfig) {
+    return normalizeFeaturesRoot(fromConfig)
   }
 
   const srcAppRoot = path.resolve(process.cwd(), 'src', 'app')
-  if (!fs.existsSync(srcAppRoot)) {
-    throw new Error(
-      'Default features path not found: ./src/app. Provide --features /path/to/src/app (or /path/to/src/app/features)'
-    )
+  if (fs.existsSync(srcAppRoot)) {
+    return path.join(srcAppRoot, 'features')
   }
 
-  return path.join(srcAppRoot, 'features')
+  throw new Error(
+    'Default features path not found.\n' +
+      'Use --features <path> or set "features" (or "paths.features") in generateui-config.json.'
+  )
 }
 
 function inferSchemasRootFromFeatures(featuresRoot: string) {
@@ -238,23 +402,27 @@ function inferSchemasRootFromFeatures(featuresRoot: string) {
 }
 
 function resolveDefaultSchemasRoot() {
+  const userConfig = loadUserConfig()
+  if (
+    userConfig?.lastSchemasPath &&
+    fs.existsSync(path.join(userConfig.lastSchemasPath, 'overlays'))
+  ) {
+    return userConfig.lastSchemasPath
+  }
+
   const cwd = process.cwd()
   if (fs.existsSync(path.join(cwd, 'src'))) {
     return path.join(cwd, 'src', 'generate-ui')
   }
-  if (fs.existsSync(path.join(cwd, 'frontend', 'src'))) {
-    return path.join(cwd, 'frontend', 'src', 'generate-ui')
-  }
   return path.join(cwd, 'generate-ui')
 }
 
-type GenerateUiConfig = {
-  appTitle?: string
-  defaultRoute?: string
-  menu?: {
-    autoInject?: boolean
-  }
-  views?: Record<string, string>
+function normalizeFeaturesRoot(value: string) {
+  const isSrcApp =
+    path.basename(value) === 'app' &&
+    path.basename(path.dirname(value)) === 'src'
+  if (isSrcApp) return path.join(value, 'features')
+  return value
 }
 
 function findOverrides(
@@ -367,16 +535,18 @@ function applyAppLayout(featuresRoot: string, schemasRoot: string) {
     injectDefaultRoute(appRoot, config.defaultRoute)
   }
 
-  const autoInject = config?.menu?.autoInject !== false
-  if (!autoInject) return
+  ensureBaseStyles(appRoot)
 
-  const appTitle = config?.appTitle || 'Generate UI'
-  injectMenuLayout(appRoot, appTitle, schemasRoot)
+  const autoInject = config?.menu?.autoInject !== false
+  if (autoInject) {
+    const appTitle = config?.appTitle || 'Generate UI'
+    injectMenuLayout(appRoot, appTitle, schemasRoot)
+  }
 }
 
 function findConfig(startDir: string) {
   let dir = startDir
-  let config: GenerateUiConfig | null = null
+  let config: GenerateUiProjectConfig | null = null
   let configPath: string | null = null
   const root = path.parse(dir).root
 
@@ -499,7 +669,7 @@ function injectMenuLayout(
 
   const cssRaw = fs.readFileSync(appCssPath, 'utf-8')
   if (!cssRaw.includes('.app-shell')) {
-    const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background:\n    radial-gradient(circle at top left, rgba(14, 116, 144, 0.14), transparent 55%),\n    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.12), transparent 50%),\n    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
+    const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background:\n    radial-gradient(circle at 10% 12%, rgba(236, 72, 153, 0.18), transparent 45%),\n    radial-gradient(circle at 85% 18%, rgba(56, 189, 248, 0.22), transparent 50%),\n    radial-gradient(circle at 25% 85%, rgba(34, 197, 94, 0.16), transparent 52%),\n    radial-gradient(circle at 80% 80%, rgba(250, 204, 21, 0.18), transparent 48%),\n    linear-gradient(180deg, #f8fafc 0%, #f2f5ff 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
     fs.writeFileSync(
       appCssPath,
       cssRaw.trim().length ? `${cssRaw.trim()}\n\n${shellCss}` : shellCss
@@ -571,10 +741,53 @@ function injectMenuLayout(
   }
 }
 
+function ensureBaseStyles(appRoot: string) {
+  const workspaceRoot = findAngularWorkspaceRoot(appRoot) ?? path.resolve(appRoot, '..')
+  const stylesPath = path.join(workspaceRoot, 'src', 'styles.css')
+  if (fs.existsSync(stylesPath)) return
+  if (fs.existsSync(path.join(workspaceRoot, 'src', 'styles.scss'))) return
+
+  const styles = `:root {
+  --bg-page: #f7f5f2;
+  --bg-surface: #ffffff;
+  --bg-ink: #0f172a;
+  --color-text: #0f172a;
+  --color-muted: #64748b;
+  --color-border: rgba(99, 102, 241, 0.28);
+  --color-primary: #22d3ee;
+  --color-primary-strong: #6366f1;
+  --color-primary-soft: rgba(34, 211, 238, 0.14);
+  --color-accent: #a78bfa;
+  --color-accent-strong: #f59e0b;
+  --color-accent-soft: rgba(167, 139, 250, 0.16);
+  --shadow-card: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--color-text);
+  font-family: system-ui, -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
+}
+`
+
+  fs.writeFileSync(stylesPath, styles)
+}
+
+function findAngularWorkspaceRoot(startDir: string) {
+  let dir = startDir
+  const root = path.parse(dir).root
+  while (true) {
+    const candidate = path.join(dir, 'angular.json')
+    if (fs.existsSync(candidate)) return dir
+    if (dir === root) return null
+    dir = path.dirname(dir)
+  }
+}
+
 function escapeString(value: string) {
   return String(value).replace(/'/g, "\\'")
 }
-
 
 function normalizeRoutePath(value: string) {
   const trimmed = String(value ?? '').trim()

@@ -78,7 +78,7 @@ export function generateFeature(
       : rawName
 
   const subtitle = `${method.toUpperCase()} ${endpoint}`
-  const viewMode = String(schema?.meta?.view || 'table')
+  const responseFormat = resolveResponseFormat(schema)
   const schemaImportPath = buildSchemaImportPath(
     featureDir,
     schemasRoot,
@@ -269,7 +269,43 @@ export class ${name}Component extends ${name}Gen implements OnInit, AfterViewIni
     return found ?? []
   }
 
+  private getConfiguredColumns() {
+    const columns = this.schema?.data?.table?.columns
+    if (!Array.isArray(columns)) return []
+    return columns
+      .map((entry: any) => {
+        if (typeof entry === 'string') {
+          return { key: entry, label: '', visible: true }
+        }
+        if (entry && typeof entry === 'object') {
+          const key = String(
+            entry.key ?? entry.id ?? entry.column ?? ''
+          ).trim()
+          if (!key) return null
+          const label =
+            typeof entry.label === 'string' ? entry.label : ''
+          const visible = entry.visible !== false
+          return { key, label, visible }
+        }
+        return null
+      })
+      .filter(Boolean) as Array<{ key: string; label: string; visible: boolean }>
+  }
+
+  private getColumnLabel(value: string) {
+    const configured = this.getConfiguredColumns()
+    const match = configured.find(column => column.key === value)
+    return match?.label ?? ''
+  }
+
   getColumns(value?: any) {
+    const configured = this.getConfiguredColumns()
+    if (configured.length) {
+      return configured
+        .filter(column => column.visible)
+        .map(column => column.key)
+    }
+
     const fieldsRaw = this.form.get('fields')?.value
     if (typeof fieldsRaw === 'string' && fieldsRaw.trim().length > 0) {
       return fieldsRaw
@@ -287,6 +323,8 @@ export class ${name}Component extends ${name}Gen implements OnInit, AfterViewIni
   }
 
   formatHeader(value: string) {
+    const configured = this.getColumnLabel(value)
+    if (configured) return configured
     return value
       .replace(/[_-]/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -703,7 +741,7 @@ export class ${name}Service {
       actionLabel,
       method,
       hasForm: formFields.length > 0,
-      viewMode
+      responseFormat
     })
   )
 
@@ -830,6 +868,11 @@ export function generateAdminFeature(
     featureDir,
     path.join(appRoot, 'ui', 'ui-select', 'ui-select.component')
   )
+  const schemaImportPath = buildSchemaImportPath(
+    featureDir,
+    schemasRoot,
+    toSafeFileName(adminOpId)
+  )
 
   fs.writeFileSync(
     componentPath,
@@ -847,6 +890,7 @@ import { UiSelectComponent } from '${uiSelectImport}'
 import { ${listName}Service } from '${listServicePath}'
 ${hasDelete ? `import { ${deleteName}Service } from '${deleteServicePath}'` : ''}
 import { BehaviorSubject, forkJoin } from 'rxjs'
+import screenSchema from '${schemaImportPath}'
 
 @Component({
   selector: 'app-${toKebab(name)}',
@@ -882,6 +926,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   loading = false
   readonly result$ = new BehaviorSubject<any>(null)
   readonly error$ = new BehaviorSubject<any>(null)
+  schema = screenSchema as any
   selected = new Set<any>()
   confirmIds: any[] = []
   private hasInitialLoad = false
@@ -975,7 +1020,43 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     return found ?? []
   }
 
+  private getConfiguredColumns() {
+    const columns = this.schema?.data?.table?.columns
+    if (!Array.isArray(columns)) return []
+    return columns
+      .map((entry: any) => {
+        if (typeof entry === 'string') {
+          return { key: entry, label: '', visible: true }
+        }
+        if (entry && typeof entry === 'object') {
+          const key = String(
+            entry.key ?? entry.id ?? entry.column ?? ''
+          ).trim()
+          if (!key) return null
+          const label =
+            typeof entry.label === 'string' ? entry.label : ''
+          const visible = entry.visible !== false
+          return { key, label, visible }
+        }
+        return null
+      })
+      .filter(Boolean) as Array<{ key: string; label: string; visible: boolean }>
+  }
+
+  private getColumnLabel(value: string) {
+    const configured = this.getConfiguredColumns()
+    const match = configured.find(column => column.key === value)
+    return match?.label ?? ''
+  }
+
   getColumns(raw?: any) {
+    const configured = this.getConfiguredColumns()
+    if (configured.length) {
+      return configured
+        .filter(column => column.visible)
+        .map(column => column.key)
+    }
+
     const rows = this.getRows(raw)
     if (rows.length > 0 && rows[0] && typeof rows[0] === 'object') {
       return Object.keys(rows[0])
@@ -984,6 +1065,8 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   }
 
   formatHeader(value: string) {
+    const configured = this.getColumnLabel(value)
+    if (configured) return configured
     return value
       .replace(/[_-]/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -1225,8 +1308,9 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     `${fileBase}.component.html`
   )
 
-  const viewMode = String(schema?.meta?.view || 'table')
-  const useCards = viewMode === 'cards'
+  const responseFormat = resolveResponseFormat(schema)
+  const useCards = responseFormat === 'cards'
+  const useRaw = responseFormat === 'raw'
   fs.writeFileSync(
     htmlPath,
     `
@@ -1248,7 +1332,12 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   </ng-container>
 
   <ng-container *ngIf="result$ | async as result">
-    ${useCards ? `
+    ${useRaw ? `
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+    ` : useCards ? `
     <div class="result-cards" *ngIf="isArrayResult(result)">
       <article class="card-tile" *ngFor="let row of getRows(result)">
         <div class="card-media" *ngIf="getCardImage(row)">
@@ -1309,10 +1398,12 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     </div>
     `}
 
+    ${!useRaw ? `
     <details class="result-raw" *ngIf="result">
       <summary>Raw response</summary>
       <pre>{{ result | json }}</pre>
     </details>
+    ` : ''}
   </ng-container>
 
   <div class="confirm-backdrop" *ngIf="confirmIds.length">
@@ -1524,7 +1615,7 @@ function escapeAttr(value: string) {
 function defaultActionLabel(method: string, hasParams: boolean) {
   switch (method) {
     case 'get':
-      return hasParams ? 'Buscar' : 'Carregar'
+      return hasParams ? 'Search' : 'Load'
     case 'post':
       return 'Criar'
     case 'put':
@@ -1537,6 +1628,20 @@ function defaultActionLabel(method: string, hasParams: boolean) {
   }
 }
 
+function resolveResponseFormat(schema: any): 'table' | 'cards' | 'raw' {
+  const candidate = String(
+    schema?.meta?.responseFormat ??
+      schema?.response?.format ??
+      schema?.meta?.view ??
+      'table'
+  )
+    .trim()
+    .toLowerCase()
+  if (candidate === 'cards') return 'cards'
+  if (candidate === 'raw') return 'raw'
+  return 'table'
+}
+
 function buildComponentHtml(options: {
   title: string
   subtitle: string
@@ -1544,11 +1649,12 @@ function buildComponentHtml(options: {
   actionLabel: string
   method: string
   hasForm: boolean
-  viewMode: string
+  responseFormat: 'table' | 'cards' | 'raw'
 }) {
   const buttonVariant =
     options.method === 'delete' ? 'danger' : 'primary'
-  const useCards = options.viewMode === 'cards'
+  const useCards = options.responseFormat === 'cards'
+  const useRaw = options.responseFormat === 'raw'
 
   if (!options.hasForm) {
     return `
@@ -1565,7 +1671,23 @@ function buildComponentHtml(options: {
     </div>
   </ui-card>
 
-  ${useCards ? `
+  ${useRaw ? `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="result$ | async as result">
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  ` : useCards ? `
   <ng-container *ngIf="error$ | async as error">
     <div class="result-error" *ngIf="error">
       <strong>Request failed.</strong>
@@ -1714,7 +1836,7 @@ function buildComponentHtml(options: {
           ></ui-input>
 
           <span class="field-error" *ngIf="isInvalid(field)">
-            Campo obrigatório
+            Required field
           </span>
         </div>
       </div>
@@ -1730,7 +1852,23 @@ function buildComponentHtml(options: {
     </form>
   </ui-card>
 
-  ${useCards ? `
+  ${useRaw ? `
+  <ng-container *ngIf="error$ | async as error">
+    <div class="result-error" *ngIf="error">
+      <strong>Request failed.</strong>
+      <div class="result-error__body">
+        {{ formatError(error) }}
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="result$ | async as result">
+    <details class="result-raw" *ngIf="result">
+      <summary>Raw response</summary>
+      <pre>{{ result | json }}</pre>
+    </details>
+  </ng-container>
+  ` : useCards ? `
   <ng-container *ngIf="error$ | async as error">
     <div class="result-error" *ngIf="error">
       <strong>Request failed.</strong>
@@ -1840,6 +1978,7 @@ function buildBaseScss() {
   display: grid;
   gap: 16px;
   min-height: calc(100vh - 48px);
+  min-width: 0;
 }
 
 .screen-description {
@@ -1851,16 +1990,18 @@ function buildBaseScss() {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
+  min-width: 0;
 }
 
 .form-field {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .field-error {
@@ -1973,6 +2114,17 @@ function buildBaseScss() {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.card-header input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.12);
+  accent-color: var(--color-primary-strong);
+  cursor: pointer;
 }
 
 .card-title {
@@ -2139,7 +2291,14 @@ function buildBaseScss() {
   min-height: 0;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1024px) {
+  .form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 820px) {
   :host {
     padding: 18px;
   }
@@ -2299,7 +2458,7 @@ export class UiCardComponent {
     class="ui-menu__group"
     *ngIf="menu.ungrouped.length"
   >
-    <h3 class="ui-menu__group-title">Outros</h3>
+    <h3 class="ui-menu__group-title">Other</h3>
     <a
       class="ui-menu__item"
       *ngFor="let item of menu.ungrouped"
@@ -2345,8 +2504,8 @@ export class UiCardComponent {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
-  box-shadow: 0 6px 16px rgba(8, 145, 178, 0.35);
+  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.25);
 }
 
 .ui-menu__group {
@@ -2379,14 +2538,14 @@ export class UiCardComponent {
 }
 
 .ui-menu__item:hover {
-  background: #f1f5f9;
+  background: var(--color-primary-soft);
   transform: translateX(2px);
 }
 
 .ui-menu__item.active {
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
   color: #ffffff;
-  box-shadow: 0 12px 24px rgba(8, 145, 178, 0.3);
+  box-shadow: 0 12px 24px rgba(99, 102, 241, 0.25);
 }
 
 .ui-menu__item.hidden {
@@ -2459,6 +2618,7 @@ export class UiFieldComponent {
   gap: 10px;
   font-size: 13px;
   color: #1f2937;
+  min-width: 0;
 }
 
 .ui-field__label {
@@ -2474,14 +2634,14 @@ export class UiFieldComponent {
 }
 
 .ui-field__info {
-  margin-left: 8px;
-  width: 18px;
-  height: 18px;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  color: #475569;
-  font-size: 11px;
+  color: var(--color-primary-strong);
+  font-size: 10px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -2490,30 +2650,34 @@ export class UiFieldComponent {
 }
 
 .ui-field__info:hover {
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .ui-field__info-panel {
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 :host ::ng-deep input,
 :host ::ng-deep textarea {
   width: 100%;
-  min-height: 3.4rem;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.9rem;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  padding: 0.9rem 1.1rem;
-  font-size: 15px;
+  padding: 0.7rem 0.95rem;
+  font-size: 14px;
   font-weight: 500;
+  box-sizing: border-box;
   box-shadow: none;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -2521,15 +2685,15 @@ export class UiFieldComponent {
 
 :host ::ng-deep input:focus,
 :host ::ng-deep textarea:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  border-color: var(--color-primary-strong);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
   transform: translateY(-1px);
 }
 
 :host ::ng-deep input.invalid,
 :host ::ng-deep textarea.invalid {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 :host ::ng-deep input::placeholder,
@@ -2538,12 +2702,15 @@ export class UiFieldComponent {
 }
 
 :host ::ng-deep input[type='checkbox'] {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border-radius: 6px;
-  box-shadow: none;
-  accent-color: var(--color-primary);
+  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.12);
+  accent-color: var(--color-primary-strong);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .field-error {
@@ -2597,18 +2764,19 @@ export class UiButtonComponent {
 .ui-button.primary {
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
   color: #ffffff;
-  box-shadow: 0 12px 24px rgba(8, 145, 178, 0.3);
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.25);
 }
 
 .ui-button.ghost {
-  background: #f9fafb;
-  color: #111827;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid var(--color-border);
 }
 
 .ui-button.danger {
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
   color: #fff;
-  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 12px 26px rgba(251, 191, 36, 0.25);
 }
 
 .ui-button:hover:not(:disabled) {
@@ -2698,6 +2866,7 @@ export class UiInputComponent {
   gap: 10px;
   font-size: 13px;
   color: #1f2937;
+  min-width: 0;
 }
 
 .ui-control__label {
@@ -2713,14 +2882,14 @@ export class UiInputComponent {
 }
 
 .ui-control__info {
-  margin-left: 8px;
-  width: 18px;
-  height: 18px;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  color: #475569;
-  font-size: 11px;
+  color: var(--color-primary-strong);
+  font-size: 10px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -2729,43 +2898,47 @@ export class UiInputComponent {
 }
 
 .ui-control__info:hover {
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .ui-control__info-panel {
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .ui-control__input {
   width: 100%;
-  min-height: 3.4rem;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  padding: 0.9rem 1.1rem;
-  font-size: 15px;
+  padding: 0.7rem 0.95rem;
+  font-size: 14px;
   font-weight: 500;
+  box-sizing: border-box;
   box-shadow: none;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .ui-control__input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  border-color: var(--color-primary-strong);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
   transform: translateY(-1px);
 }
 
 .ui-control__input.invalid {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .ui-control__input::placeholder {
@@ -2848,6 +3021,7 @@ export class UiTextareaComponent {
   gap: 10px;
   font-size: 13px;
   color: #1f2937;
+  min-width: 0;
 }
 
 .ui-control__label {
@@ -2863,14 +3037,14 @@ export class UiTextareaComponent {
 }
 
 .ui-control__info {
-  margin-left: 8px;
-  width: 18px;
-  height: 18px;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  color: #475569;
-  font-size: 11px;
+  color: var(--color-primary-strong);
+  font-size: 10px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -2879,43 +3053,47 @@ export class UiTextareaComponent {
 }
 
 .ui-control__info:hover {
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .ui-control__info-panel {
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .ui-control__input {
   width: 100%;
-  min-height: 3.4rem;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  padding: 0.9rem 1.1rem;
-  font-size: 15px;
+  padding: 0.7rem 0.95rem;
+  font-size: 14px;
   font-weight: 500;
+  box-sizing: border-box;
   box-shadow: none;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .ui-control__input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  border-color: var(--color-primary-strong);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
   transform: translateY(-1px);
 }
 
 .ui-control__input.invalid {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .ui-control__input::placeholder {
@@ -2999,6 +3177,7 @@ export class UiSelectComponent {
   gap: 10px;
   font-size: 13px;
   color: #1f2937;
+  min-width: 0;
 }
 
 .ui-control__label {
@@ -3014,14 +3193,14 @@ export class UiSelectComponent {
 }
 
 .ui-control__info {
-  margin-left: 8px;
-  width: 18px;
-  height: 18px;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  color: #475569;
-  font-size: 11px;
+  color: var(--color-primary-strong);
+  font-size: 10px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -3030,29 +3209,33 @@ export class UiSelectComponent {
 }
 
 .ui-control__info:hover {
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .ui-control__info-panel {
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .ui-control__select {
   width: 100%;
-  min-height: 3.4rem;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  padding: 0.9rem 2.6rem 0.9rem 1.1rem;
-  font-size: 15px;
+  padding: 0.7rem 2.3rem 0.7rem 0.95rem;
+  font-size: 14px;
   font-weight: 500;
+  box-sizing: border-box;
   box-shadow: none;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -3064,14 +3247,14 @@ export class UiSelectComponent {
 }
 
 .ui-control__select:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+  border-color: var(--color-primary-strong);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
   transform: translateY(-1px);
 }
 
 .ui-control__select.invalid {
-  border-color: #ef4444;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 `
     },
@@ -3147,6 +3330,7 @@ export class UiCheckboxComponent {
   gap: 10px;
   font-size: 13px;
   color: #1f2937;
+  min-width: 0;
 }
 
 .ui-control__label {
@@ -3162,14 +3346,14 @@ export class UiCheckboxComponent {
 }
 
 .ui-control__info {
-  margin-left: 8px;
-  width: 18px;
-  height: 18px;
+  margin-left: 6px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--color-border);
   background: #ffffff;
-  color: #475569;
-  font-size: 11px;
+  color: var(--color-primary-strong);
+  font-size: 10px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
@@ -3178,27 +3362,31 @@ export class UiCheckboxComponent {
 }
 
 .ui-control__info:hover {
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .ui-control__info-panel {
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .ui-control__checkbox {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border-radius: 6px;
-  box-shadow: none;
-  accent-color: var(--color-primary);
+  border-radius: 8px;
+  border: 2px solid var(--color-border);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(99, 102, 241, 0.12);
+  accent-color: var(--color-primary-strong);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 `
     }
@@ -3274,6 +3462,12 @@ function toFolderName(operationId: string) {
 
 function toFileBase(operationId: string) {
   return String(operationId).replace(/[\\/]/g, '')
+}
+
+function toSafeFileName(value: string) {
+  return String(value)
+    .replace(/[\\/]/g, '-')
+    .replace(/\s+/g, '-')
 }
 
 function toKebab(value: string) {

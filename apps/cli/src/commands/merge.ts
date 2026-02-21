@@ -2,6 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import { execFileSync } from 'child_process'
 import { logStep, logTip } from '../runtime/logger'
+import {
+  findProjectConfig,
+  pickConfiguredPath,
+  resolveOptionalPath
+} from '../runtime/project-config'
 
 export async function merge(options: {
   featuresPath?: string
@@ -9,7 +14,16 @@ export async function merge(options: {
   file?: string
   tool?: string
 }) {
-  const featuresRoot = resolveFeaturesRoot(options.featuresPath)
+  const projectConfig = findProjectConfig(process.cwd())
+  const configuredFeatures = pickConfiguredPath(
+    projectConfig.config,
+    'features'
+  )
+  const featuresRoot = resolveFeaturesRoot(
+    options.featuresPath,
+    configuredFeatures,
+    projectConfig.configPath
+  )
   const generatedRoot = path.join(featuresRoot, 'generated')
   const overridesRoot = path.join(featuresRoot, 'overrides')
 
@@ -65,26 +79,37 @@ export async function merge(options: {
   )
 }
 
-function resolveFeaturesRoot(value?: string) {
-  if (value) {
-    const resolved = path.resolve(process.cwd(), value)
-    const isSrcApp =
-      path.basename(resolved) === 'app' &&
-      path.basename(path.dirname(resolved)) === 'src'
-    if (isSrcApp) {
-      return path.join(resolved, 'features')
-    }
-    return resolved
+function resolveFeaturesRoot(
+  value: string | undefined,
+  configured: string | null,
+  configPath: string | null
+) {
+  const fromConfig = resolveOptionalPath(
+    value,
+    configured,
+    configPath
+  )
+  if (fromConfig) {
+    return normalizeFeaturesRoot(fromConfig)
   }
 
   const srcAppRoot = path.resolve(process.cwd(), 'src', 'app')
-  if (!fs.existsSync(srcAppRoot)) {
-    throw new Error(
-      'Default features path not found: ./src/app. Provide --features /path/to/src/app (or /path/to/src/app/features)'
-    )
+  if (fs.existsSync(srcAppRoot)) {
+    return path.join(srcAppRoot, 'features')
   }
 
-  return path.join(srcAppRoot, 'features')
+  throw new Error(
+    'Default features path not found.\n' +
+      'Use --features <path> or set "features" (or "paths.features") in generateui-config.json.'
+  )
+}
+
+function normalizeFeaturesRoot(value: string) {
+  const isSrcApp =
+    path.basename(value) === 'app' &&
+    path.basename(path.dirname(value)) === 'src'
+  if (isSrcApp) return path.join(value, 'features')
+  return value
 }
 
 function resolveFeatureFolder(

@@ -28,10 +28,13 @@ program
 program
   .command('generate')
   .description('Generate screen schemas from OpenAPI')
-  .requiredOption('-o, --openapi <path>', 'OpenAPI file')
+  .option(
+    '-o, --openapi <path>',
+    'OpenAPI file (optional if configured in generateui-config.json)'
+  )
   .option(
     '--output <path>',
-    'Output directory for generate-ui (default: ./src/generate-ui or ./generate-ui)'
+    'Output directory for generate-ui (optional if configured in generateui-config.json)'
   )
   .option('-d, --debug', 'Explain merge decisions')
   .action(async (options) => {
@@ -64,7 +67,18 @@ program
     '-s, --schemas <path>',
     'Directory containing generate-ui (with overlays/)'
   )
-  .option('-f, --features <path>', 'Angular features output directory')
+  .option(
+    '-f, --features <path>',
+    'Angular features output directory (optional if configured in generateui-config.json)'
+  )
+  .option(
+    '-w, --watch',
+    'Watch .screen.json files and regenerate Angular on changes (default)'
+  )
+  .option(
+    '--no-watch',
+    'Run Angular generation once and exit'
+  )
   .action(async (options) => {
     const { telemetry, dev, verbose } = program.opts<{
       telemetry: boolean
@@ -76,6 +90,7 @@ program
       await angular({
         schemasPath: options.schemas,
         featuresPath: options.features,
+        watch: options.watch !== false,
         telemetryEnabled: telemetry
       })
     } catch (error) {

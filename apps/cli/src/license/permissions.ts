@@ -110,6 +110,12 @@ export async function getPermissions(): Promise<PermissionResponse> {
       return { plan: cache.plan, features: cache.features }
     }
 
+    // If the user is logged in but the API is temporarily unavailable,
+    // fallback to the last known permissions to avoid blocking generation.
+    if (tokenPresent && cache) {
+      return { plan: cache.plan, features: cache.features }
+    }
+
     if (tokenPresent) {
       throw new Error(
         'Login concluído, mas não foi possível validar sua licença agora. Verifique sua conexão com a API e tente novamente.'
