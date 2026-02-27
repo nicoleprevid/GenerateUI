@@ -28,6 +28,11 @@ const PRESENTATION_KEYS = [
   'hidden'
 ]
 
+const COLUMN_PRESENTATION_KEYS = [
+  'label',
+  'visible'
+]
+
 export function mergeScreen(
   nextScreen: any,
   overlay: any | null,
@@ -54,6 +59,14 @@ export function mergeScreen(
     actions: mergeActions(
       normalizedNext.actions,
       normalizedOverlay.actions
+    ),
+    response: mergeResponse(
+      normalizedNext.response,
+      normalizedOverlay.response
+    ),
+    data: mergeData(
+      normalizedNext.data,
+      normalizedOverlay.data
     )
   }
 
@@ -105,6 +118,65 @@ function mergeActions(nextActions: any, overlayActions: any) {
   return merged
 }
 
+function mergeResponse(nextResponse: any, overlayResponse: any) {
+  if (!overlayResponse) return nextResponse
+  const allowed = ['table', 'cards', 'raw']
+  const candidate = String(overlayResponse?.format || '')
+    .trim()
+    .toLowerCase()
+  if (!allowed.includes(candidate)) return nextResponse
+  return {
+    ...(nextResponse || {}),
+    format: candidate
+  }
+}
+
+function mergeData(nextData: any, overlayData: any) {
+  const nextColumns = nextData?.table?.columns
+  const overlayColumns = overlayData?.table?.columns
+  if (!Array.isArray(nextColumns)) {
+    return nextData ?? {}
+  }
+
+  const overlayMap = new Map<string, any>()
+  if (Array.isArray(overlayColumns)) {
+    for (const entry of overlayColumns) {
+      if (!entry || typeof entry !== 'object') continue
+      const key = String(
+        entry.key ?? entry.id ?? entry.column ?? ''
+      ).trim()
+      if (!key) continue
+      overlayMap.set(key, entry)
+    }
+  }
+
+  const mergedColumns = nextColumns.map((entry: any) => {
+    if (!entry || typeof entry !== 'object') return entry
+    const key = String(
+      entry.key ?? entry.id ?? entry.column ?? ''
+    ).trim()
+    if (!key) return entry
+    const overlay = overlayMap.get(key)
+    if (!overlay) return entry
+
+    const merged = { ...entry }
+    for (const prop of COLUMN_PRESENTATION_KEYS) {
+      if (overlay[prop] !== undefined) {
+        merged[prop] = overlay[prop]
+      }
+    }
+    return merged
+  })
+
+  return {
+    ...(nextData || {}),
+    table: {
+      ...(nextData?.table || {}),
+      columns: mergedColumns
+    }
+  }
+}
+
 function mergeFieldList(
   nextFields: any[],
   overlayFields: any[],
@@ -153,21 +225,6 @@ function mergeFieldList(
 
   for (const [id, nextField] of nextMap.entries()) {
     if (used.has(id)) continue
-    const prevField = prevMap.get(id)
-
-    if (prevField && !overlayMap.has(id)) {
-      result.push({
-        ...nextField,
-        hidden: true,
-        meta: {
-          ...mergeMeta(nextField.meta, prevField.meta, options.openapiVersion),
-          userRemoved: true,
-          lastChangedBy: 'user'
-        }
-      })
-      debug.push(`USER_REMOVED_TOMBSTONE ${id}`)
-      continue
-    }
 
     const autoAdded = !nextField.required
     result.push({
@@ -216,6 +273,13 @@ function mergeField(
   if (prevField && prevField.type !== nextField.type) {
     merged.ui = undefined
     merged.options = nextField.options ?? null
+    merged.defaultValue = nextField.defaultValue
+    merged.hidden = nextField.hidden
+    merged.meta = {
+      ...meta,
+      userRemoved: false,
+      lastChangedBy: 'api'
+    }
     debug.push(`TYPE_CHANGED ${meta.id}`)
   }
 

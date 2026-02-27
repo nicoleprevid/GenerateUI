@@ -100,6 +100,8 @@ Sincronizacao:
 Regra:
 - `generate-ui angular` roda em watch por padrao.
 - Para rodar uma vez e sair: `generate-ui angular --no-watch`.
+- `generate-ui generate` (fluxo completo) roda uma vez por padrao.
+- Para manter watch no fluxo completo: `generate-ui generate --watch`.
 
 Comportamento:
 - Observa `*.screen.json` em `src/generate-ui/overlays`.
@@ -130,11 +132,11 @@ Mudou overlay (`*.screen.json`):
 
 Mudou `generateui-config.json`:
 - Nao e monitorado em watch no fluxo atual.
-- Recomendado rerodar `generate-ui angular` para reaplicar layout/views/defaultRoute/menu.
+- Recomendado rerodar `generate-ui generate` (fluxo completo) para reaplicar layout/views/defaultRoute/menu.
 
 Mudou OpenAPI:
-- Requer `generate-ui generate` para atualizar schemas.
-- Depois `generate-ui angular` para refletir no codigo Angular.
+- `generate-ui generate` ja cobre o fluxo completo (schemas + Angular).
+- `schema` e `angular` separados existem para uso avancado.
 
 ## 9) Instalacao: seed automatico de config
 
@@ -190,3 +192,33 @@ Contrato recomendado para publicacao:
 Regra de evolucao:
 - Novos campos devem nascer como opt-in e com fallback seguro.
 - Campos que possam quebrar estrutura devem ser controlados por config global ou feature flag, nao por overlay livre.
+
+## 13) Estrategia atual de codigo Angular (simples)
+
+Regra:
+- O fluxo padrao usa `generated/` e `overrides/`, sem heranca obrigatoria por `*.base.ts`.
+- Regeneracao sobrescreve `generated/`.
+- `overrides/` permanece como area de customizacao manual.
+
+Objetivo:
+- Manter previsibilidade e simplicidade operacional.
+- Tornar as mudancas de API visiveis via diff (`generated` x `overrides`) com ajuste manual guiado.
+
+## 14) Regras do comando `merge`
+
+Regra:
+- `merge` e o fluxo recomendado para revisar diferencas entre `generated` e `overrides`.
+- A saida do `angular` lista apenas features com diferenca real no `component.ts` (nao lista tudo).
+
+Comportamento:
+- Se o arquivo em `overrides` nao existir, o CLI cria a copia a partir de `generated` e segue.
+- Resolucao de `--feature` e tolerante (com/sem `Component`, case, separadores).
+- Se a feature nao existir, mostra lista de features disponiveis.
+
+Tools:
+- `--tool code`: abre Merge Editor do VS Code (recomendado para consolidar resultado em overrides).
+- `--tool code-diff`: abre diff classico no VS Code (left/right).
+- Fallbacks: `vimdiff`, `diff`, `meld`, `kdiff3`, `bc`.
+
+Observacao de DX:
+- Para usar `--tool code` ou `--tool code-diff`, e recomendado instalar o comando `code` no PATH.

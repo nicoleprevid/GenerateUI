@@ -42,11 +42,7 @@ program
   )
   .option(
     '-w, --watch',
-    'Watch .screen.json files and regenerate Angular on changes (default)'
-  )
-  .option(
-    '--no-watch',
-    'Run generation once and exit'
+    'Keep watching .screen.json files after generation'
   )
   .option('-d, --debug', 'Explain merge decisions')
   .action(async (options) => {
@@ -66,7 +62,7 @@ program
       })
       await angular({
         featuresPath: options.features,
-        watch: options.watch !== false,
+        watch: Boolean(options.watch),
         telemetryEnabled: telemetry
       })
     } catch (error) {

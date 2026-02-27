@@ -117,9 +117,7 @@ export function generateFeature(
     path.join(appRoot, 'ui', 'ui-textarea', 'ui-textarea.component')
   )
 
-  fs.writeFileSync(
-    componentPath,
-    `
+  const generatedComponentSource = `
 import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms'
@@ -491,7 +489,7 @@ export class ${name}Component extends ${name}Gen implements OnInit, AfterViewIni
 
 }
 `
-  )
+  fs.writeFileSync(componentPath, generatedComponentSource)
 
   /**
    * 2️⃣ Arquivo gerado (sempre sobrescreve)
@@ -874,9 +872,7 @@ export function generateAdminFeature(
     toSafeFileName(adminOpId)
   )
 
-  fs.writeFileSync(
-    componentPath,
-    `
+  const generatedAdminComponentSource = `
 import { Component, OnDestroy, OnInit, AfterViewInit } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { Router } from '@angular/router'
@@ -1301,7 +1297,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   }
 }
 `
-  )
+  fs.writeFileSync(componentPath, generatedAdminComponentSource)
 
   const htmlPath = path.join(
     featureDir,

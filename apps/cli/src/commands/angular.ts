@@ -263,10 +263,12 @@ async function generateAngularOnce(options: {
   )
   if (overrides.length) {
     console.log('')
-    console.log('ℹ Overrides detected:')
+    console.log('ℹ Overrides with differences detected:')
+    console.log('  Use merge to compare generated (left) vs overrides (right).')
+    console.log('  Keep your changes in the right file (overrides).')
     for (const override of overrides) {
       console.log(
-        `  - ${override.component}: run "generate-ui merge --feature ${override.folder}"`
+        `  - ${override.component} -> generate-ui merge --feature ${override.folder} --file all`
       )
     }
     console.log('')
@@ -442,15 +444,22 @@ function findOverrides(
       route.folder,
       `${route.fileBase}.component.ts`
     )
-    if (fs.existsSync(overridePath)) {
+    const generatedPath = path.join(
+      generatedRoot,
+      route.folder,
+      `${route.fileBase}.component.ts`
+    )
+
+    if (!fs.existsSync(overridePath)) continue
+    if (!fs.existsSync(generatedPath)) continue
+
+    const overrideRaw = fs.readFileSync(overridePath, 'utf-8')
+    const generatedRaw = fs.readFileSync(generatedPath, 'utf-8')
+    if (overrideRaw !== generatedRaw) {
       results.push({
         folder: route.folder,
         component: route.component,
-        generatedPath: path.join(
-          generatedRoot,
-          route.folder,
-          `${route.fileBase}.component.ts`
-        ),
+        generatedPath,
         overridePath
       })
     }
