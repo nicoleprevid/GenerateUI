@@ -10,9 +10,12 @@ Regra:
 - O usuario deve rodar na raiz do projeto Angular.
 
 Comandos padrao:
-- `generate-ui generate`
-- `generate-ui angular`
+- `generate-ui generate` (fluxo completo: schemas + Angular)
 - `generate-ui merge --feature <FeatureName>`
+
+Comandos avancados (quando necessario):
+- `generate-ui schema` (somente schemas)
+- `generate-ui angular` (somente Angular a partir dos overlays existentes)
 
 Onde o CLI busca configuracao:
 - `generateui-config.json` na raiz do projeto (ou ancestrais).

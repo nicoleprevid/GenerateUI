@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
-import { generate } from './commands/generate'
+import { generate as schemaGenerate } from './commands/generate'
 import { angular } from './commands/angular'
 import { login } from './commands/login'
 import { merge } from './commands/merge'
@@ -23,11 +23,63 @@ program
   .option('--verbose', 'Enable verbose logs (same as --dev)')
 
 /**
- * 1️⃣ OpenAPI → Screen schemas
+ * 1️⃣ Default flow: OpenAPI → Schemas → Angular
  */
 program
   .command('generate')
-  .description('Generate screen schemas from OpenAPI')
+  .description('Generate schemas and Angular code (default flow)')
+  .option(
+    '-o, --openapi <path>',
+    'OpenAPI file (optional if configured in generateui-config.json)'
+  )
+  .option(
+    '--output <path>',
+    'Output directory for generate-ui (optional if configured in generateui-config.json)'
+  )
+  .option(
+    '-f, --features <path>',
+    'Angular features output directory (optional if configured in generateui-config.json)'
+  )
+  .option(
+    '-w, --watch',
+    'Watch .screen.json files and regenerate Angular on changes (default)'
+  )
+  .option(
+    '--no-watch',
+    'Run generation once and exit'
+  )
+  .option('-d, --debug', 'Explain merge decisions')
+  .action(async (options) => {
+    const { telemetry, dev, verbose } = program.opts<{
+      telemetry: boolean
+      dev?: boolean
+      verbose?: boolean
+    }>()
+    setVerbose(Boolean(dev || verbose))
+    try {
+      await trackGenerateCalled()
+      await schemaGenerate({
+        openapi: options.openapi,
+        output: options.output,
+        debug: options.debug,
+        telemetryEnabled: telemetry
+      })
+      await angular({
+        featuresPath: options.features,
+        watch: options.watch !== false,
+        telemetryEnabled: telemetry
+      })
+    } catch (error) {
+      handleCliError(error)
+    }
+  })
+
+/**
+ * 2️⃣ Advanced: OpenAPI → Screen schemas only
+ */
+program
+  .command('schema')
+  .description('Advanced: generate screen schemas only')
   .option(
     '-o, --openapi <path>',
     'OpenAPI file (optional if configured in generateui-config.json)'
@@ -46,7 +98,7 @@ program
     setVerbose(Boolean(dev || verbose))
     try {
       await trackGenerateCalled()
-      await generate({
+      await schemaGenerate({
         openapi: options.openapi,
         output: options.output,
         debug: options.debug,
@@ -58,11 +110,11 @@ program
   })
 
 /**
- * 2️⃣ Screen schemas → Angular code
+ * 3️⃣ Advanced: Screen schemas → Angular code
  */
 program
   .command('angular')
-  .description('Generate Angular code from screen schemas')
+  .description('Advanced: generate Angular code from screen schemas')
   .option(
     '-s, --schemas <path>',
     'Directory containing generate-ui (with overlays/)'
@@ -99,7 +151,7 @@ program
   })
 
 /**
- * 3️⃣ Login (Dev plan)
+ * 4️⃣ Login (Dev plan)
  */
 program
   .command('login')
@@ -119,7 +171,7 @@ program
   })
 
 /**
- * 4️⃣ Compare generated vs overrides (interactive)
+ * 5️⃣ Compare generated vs overrides (interactive)
  */
 program
   .command('merge')

@@ -50,10 +50,13 @@ npx generate-ui --help
 
 ## Recommended Workflow
 
-GenerateUI works in two main steps:
+GenerateUI default flow is a single command:
 
-1. Read the OpenAPI and generate `screens.json`
-2. Generate Angular code from `screens.json`
+1. Read OpenAPI and generate schemas
+2. Generate Angular code
+
+All in:
+- `generate-ui generate`
 
 ## Recommended Setup (No Paths in Commands)
 
@@ -82,33 +85,25 @@ Note: `list` is treated as table-style rendering.
 ## Complete Step-by-Step
 
 1. Configure `generateui-config.json` at the project root.
-2. Run schema generation:
+   Edit it before generation whenever you want to change `appTitle`, `defaultRoute`, `menu.autoInject`, or `views`.
+2. Run full generation:
 
 ```bash
 generate-ui generate
 ```
 
 3. Review generated files in `src/generate-ui/overlays`.
-4. Run Angular generation:
-
-```bash
-generate-ui angular
-```
-
-`generate-ui angular` keeps live sync while editing `*.screen.json`.
-To run once and exit, use:
-
-```bash
-generate-ui angular --no-watch
-```
-
-5. If needed, review generated vs override changes:
+4. If needed, review generated vs override changes:
 
 ```bash
 generate-ui merge --feature ProductsAdmin
 ```
 
-## 1) Generate `screens.json`
+Advanced commands:
+- `generate-ui schema` -> generate schemas only
+- `generate-ui angular` -> regenerate Angular from existing schemas (`--no-watch` to run once)
+
+## 1) Default Full Generation
 
 ```bash
 generate-ui generate
@@ -134,15 +129,20 @@ What you should review now:
 
 Tip: this is the best moment to adjust naming and structure before generating code.
 
-## 2) Generate Angular code from `screens.json`
+## 2) Advanced Commands
 
 ```bash
+generate-ui schema
 generate-ui angular
 ```
 
-What happens after this command:
+What they do:
 
-- For each screen defined in `screens.json`, GenerateUI creates:
+- `schema` generates or updates `generated/` and `overlays/` from OpenAPI.
+- `angular` regenerates Angular output from existing overlays.
+- `angular` keeps live sync while editing `*.screen.json` (use `--no-watch` to run once).
+
+For each screen defined in overlays, Angular generation creates:
   - a feature folder
   - list and form components (create/edit)
   - a typed API service
@@ -185,7 +185,7 @@ What you should review now:
 Note:
 If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
 
-Defaults:
+Defaults (for advanced commands):
 - `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./generate-ui`)
 - `--features` defaults to `./src/app/features`
 - Generated files are placed under `features/generated/` and your manual edits go in `features/overrides/`

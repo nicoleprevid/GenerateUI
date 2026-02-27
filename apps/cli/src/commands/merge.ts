@@ -118,8 +118,15 @@ function resolveFeatureFolder(
   overridesRoot: string
 ) {
   const direct = value.trim()
-  const pascal = toPascalCase(value)
-  const candidates = [direct, pascal]
+  const withoutComponent = direct.replace(/Component$/i, '')
+  const pascal = toPascalCase(direct)
+  const pascalWithoutComponent = toPascalCase(withoutComponent)
+  const candidates = [
+    direct,
+    withoutComponent,
+    pascal,
+    pascalWithoutComponent
+  ]
 
   for (const candidate of candidates) {
     if (

@@ -1,0 +1,15 @@
+{
+  "openapi": "/Users/nicoleprevid/Downloads/generateui-playground/dummyOpenApi.yaml",
+  "schemas": "/Users/nicoleprevid/Downloads/generateui-playground/frontend/src/generate-ui",
+  "features": "/Users/nicoleprevid/Downloads/generateui-playground/frontend/src/app/features",
+  "appTitle": "Store",
+  "defaultRoute": "",
+  "menu": {
+    "autoInject": true
+  },
+  "views": {
+    "ProductsAdmin": "cards",
+    "getProducts": "list",
+    "CharacterAdmin": "cards"
+  }
+}

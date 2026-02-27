@@ -266,7 +266,7 @@ async function generateAngularOnce(options: {
     console.log('ℹ Overrides detected:')
     for (const override of overrides) {
       console.log(
-        `  - ${override.component}: run "generate-ui merge --feature ${override.component.replace(/Component$/, '')}"`
+        `  - ${override.component}: run "generate-ui merge --feature ${override.folder}"`
       )
     }
     console.log('')
@@ -431,6 +431,7 @@ function findOverrides(
   generatedRoot: string
 ) {
   const results: Array<{
+    folder: string
     component: string
     generatedPath: string
     overridePath: string
@@ -443,6 +444,7 @@ function findOverrides(
     )
     if (fs.existsSync(overridePath)) {
       results.push({
+        folder: route.folder,
         component: route.component,
         generatedPath: path.join(
           generatedRoot,
@@ -520,13 +522,14 @@ function applyAppLayout(featuresRoot: string, schemasRoot: string) {
     console.log(`  🏷️  appTitle: "${resolvedTitle}"`)
     console.log(`  ➡️  defaultRoute: ${resolvedRoute}`)
     console.log(`  🧭 menu.autoInject: ${resolvedInject}`)
+    console.log('  ✍️  Edit generateui-config.json before running `generate-ui generate` when you want to change title, route, views, or menu behavior.')
     console.log('  🧩 menu overrides: edit generate-ui/menu.overrides.json to customize labels, groups, and order')
     console.log('     (this file is created once and never overwritten)')
     console.log('')
   } else {
     console.log('ℹ️  No generateui-config.json found. Using defaults.')
     console.log('')
-    console.log('  ✨ To customize, add generateui-config.json at your project root.')
+    console.log('  ✨ To customize, create/edit generateui-config.json at your project root before running `generate-ui generate`.')
     console.log('  🧩 To customize the menu, edit generate-ui/menu.overrides.json (created on first generate).')
     console.log('')
   }
