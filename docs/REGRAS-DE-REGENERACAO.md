@@ -222,3 +222,28 @@ Tools:
 
 Observacao de DX:
 - Para usar `--tool code` ou `--tool code-diff`, e recomendado instalar o comando `code` no PATH.
+
+## 15) UI Kit reutilizavel (contrato de customizacao)
+
+Regra:
+- Todo bloco de UI reutilizavel deve existir em pasta propria dentro de `src/app/ui`.
+- As telas geradas devem consumir esses blocos, nao HTML "hardcoded" duplicado por tela.
+
+Componentes base atuais (por pasta):
+- `ui-card`
+- `ui-menu`
+- `ui-button`
+- `ui-input`
+- `ui-textarea`
+- `ui-select`
+- `ui-checkbox`
+- `ui-search`
+- `ui-badge`
+
+Contrato de substituicao:
+- O usuario pode trocar implementacao/estilo desses componentes para plugar seu design system.
+- A geracao de features continua referenciando os mesmos seletores (`ui-*`), mantendo compatibilidade.
+
+Diretriz de evolucao:
+- Novo elemento compartilhado (ex.: filtro, modal, chip, tabela, toast) deve nascer primeiro como componente `ui-*` em pasta isolada.
+- Evitar logica visual duplicada em `features/generated/*` quando puder virar componente reutilizavel.

@@ -681,7 +681,7 @@ function injectMenuLayout(
 
   const cssRaw = fs.readFileSync(appCssPath, 'utf-8')
   if (!cssRaw.includes('.app-shell')) {
-    const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background:\n    radial-gradient(circle at 10% 12%, rgba(236, 72, 153, 0.18), transparent 45%),\n    radial-gradient(circle at 85% 18%, rgba(56, 189, 248, 0.22), transparent 50%),\n    radial-gradient(circle at 25% 85%, rgba(34, 197, 94, 0.16), transparent 52%),\n    radial-gradient(circle at 80% 80%, rgba(250, 204, 21, 0.18), transparent 48%),\n    linear-gradient(180deg, #f8fafc 0%, #f2f5ff 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
+    const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
     fs.writeFileSync(
       appCssPath,
       cssRaw.trim().length ? `${cssRaw.trim()}\n\n${shellCss}` : shellCss
@@ -759,27 +759,29 @@ function ensureBaseStyles(appRoot: string) {
   if (fs.existsSync(stylesPath)) return
   if (fs.existsSync(path.join(workspaceRoot, 'src', 'styles.scss'))) return
 
-  const styles = `:root {
-  --bg-page: #f7f5f2;
+  const styles = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
+
+:root {
+  --bg-page: #f8fafc;
   --bg-surface: #ffffff;
   --bg-ink: #0f172a;
   --color-text: #0f172a;
   --color-muted: #64748b;
-  --color-border: rgba(99, 102, 241, 0.28);
-  --color-primary: #22d3ee;
-  --color-primary-strong: #6366f1;
-  --color-primary-soft: rgba(34, 211, 238, 0.14);
-  --color-accent: #a78bfa;
-  --color-accent-strong: #f59e0b;
-  --color-accent-soft: rgba(167, 139, 250, 0.16);
-  --shadow-card: 0 12px 30px rgba(15, 23, 42, 0.08);
+  --color-border: #d1d5db;
+  --color-primary: #3b82f6;
+  --color-primary-strong: #1d4ed8;
+  --color-primary-soft: rgba(59, 130, 246, 0.14);
+  --color-accent: #0ea5e9;
+  --color-accent-strong: #0284c7;
+  --color-accent-soft: rgba(14, 165, 233, 0.14);
+  --shadow-card: 0 4px 16px rgba(15, 23, 42, 0.08);
 }
 
 body {
   margin: 0;
   background: var(--bg-page);
   color: var(--color-text);
-  font-family: system-ui, -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
 }
 `
 

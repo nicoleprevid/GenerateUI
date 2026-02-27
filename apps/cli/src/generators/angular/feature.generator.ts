@@ -866,6 +866,14 @@ export function generateAdminFeature(
     featureDir,
     path.join(appRoot, 'ui', 'ui-select', 'ui-select.component')
   )
+  const uiSearchImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-search', 'ui-search.component')
+  )
+  const uiBadgeImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-badge', 'ui-badge.component')
+  )
   const schemaImportPath = buildSchemaImportPath(
     featureDir,
     schemasRoot,
@@ -883,6 +891,8 @@ import { UiCheckboxComponent } from '${uiCheckboxImport}'
 import { UiInputComponent } from '${uiInputImport}'
 import { UiTextareaComponent } from '${uiTextareaImport}'
 import { UiSelectComponent } from '${uiSelectImport}'
+import { UiSearchComponent } from '${uiSearchImport}'
+import { UiBadgeComponent } from '${uiBadgeImport}'
 import { ${listName}Service } from '${listServicePath}'
 ${hasDelete ? `import { ${deleteName}Service } from '${deleteServicePath}'` : ''}
 import { BehaviorSubject, forkJoin } from 'rxjs'
@@ -899,7 +909,9 @@ import screenSchema from '${schemaImportPath}'
     UiSelectComponent,
     UiCheckboxComponent,
     UiInputComponent,
-    UiTextareaComponent
+    UiTextareaComponent,
+    UiSearchComponent,
+    UiBadgeComponent
   ],
   templateUrl: './${fileBase}.component.html',
   styleUrls: ['./${fileBase}.component.scss']
@@ -925,6 +937,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   schema = screenSchema as any
   selected = new Set<any>()
   confirmIds: any[] = []
+  searchTerm = ''
   private hasInitialLoad = false
 
   constructor(
@@ -998,8 +1011,12 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     this.load()
   }
 
+  onSearch(value: string) {
+    this.searchTerm = value
+  }
+
   isArrayResult(raw?: any) {
-    return this.getRows(raw).length > 0
+    return this.getVisibleRows(raw).length > 0
   }
 
   getRows(raw?: any) {
@@ -1014,6 +1031,13 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
 
     const found = this.findFirstArray(value, 0, 5)
     return found ?? []
+  }
+
+  getVisibleRows(raw?: any) {
+    const rows = this.getRows(raw)
+    const term = this.searchTerm.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter(row => this.matchesSearch(row, term))
   }
 
   private getConfiguredColumns() {
@@ -1161,7 +1185,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   toggleAll(checked: boolean) {
     this.selected.clear()
     if (!checked) return
-    for (const row of this.getRows()) {
+    for (const row of this.getVisibleRows()) {
       const id = this.getRowId(row)
       if (id !== null && id !== undefined) {
         this.selected.add(id)
@@ -1239,6 +1263,29 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     return null
   }
 
+  getStatusVariant(row: any): 'success' | 'warning' | 'danger' | 'neutral' {
+    const raw =
+      row?.status ??
+      row?.availabilityStatus ??
+      row?.state ??
+      row?.stockStatus
+    const value = String(raw ?? '').toLowerCase()
+    if (/active|ok|success|instock|available/.test(value)) return 'success'
+    if (/warning|low|pending|draft/.test(value)) return 'warning'
+    if (/error|inactive|disabled|out|blocked|archived/.test(value)) return 'danger'
+    return 'neutral'
+  }
+
+  getStatusLabel(row: any) {
+    const raw =
+      row?.status ??
+      row?.availabilityStatus ??
+      row?.state ??
+      row?.stockStatus
+    if (raw === null || raw === undefined || raw === '') return 'Unknown'
+    return this.formatValue(raw)
+  }
+
   private unwrapResult(value: any) {
     if (!value || typeof value !== 'object') return value
     if (Object.prototype.hasOwnProperty.call(value, 'data')) {
@@ -1280,6 +1327,16 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     return null
   }
 
+  private matchesSearch(row: any, term: string) {
+    if (!row || typeof row !== 'object') return false
+    const values = Object.values(row)
+    for (const value of values) {
+      const normalized = this.formatValue(value).toLowerCase()
+      if (normalized.includes(term)) return true
+    }
+    return false
+  }
+
   private findFirstArray(
     value: any,
     depth: number,
@@ -1312,8 +1369,20 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     `
 <div class="page">
   <ui-card title="${escapeAttr(title)}" subtitle="${escapeAttr(subtitle)}">
+    <div class="admin-toolbar">
+      <ui-search
+        [value]="searchTerm"
+        [placeholder]="'Search records...'"
+        (valueChange)="onSearch($event)"
+      ></ui-search>
+      <div class="admin-toolbar__meta">
+        <ui-badge variant="neutral">
+          {{ getVisibleRows(result$ | async).length }} records
+        </ui-badge>
+      </div>
+    </div>
     <div class="actions admin-actions">
-      <ui-button variant="primary" (click)="refresh()">Refresh</ui-button>
+      <ui-button variant="ghost" (click)="refresh()">Refresh</ui-button>
       ${hasDelete ? '<ui-button variant="danger" [disabled]="!selected.size" (click)="confirmBulkDelete()">Delete selected</ui-button>' : ''}
     </div>
   </ui-card>
@@ -1335,7 +1404,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     </details>
     ` : useCards ? `
     <div class="result-cards" *ngIf="isArrayResult(result)">
-      <article class="card-tile" *ngFor="let row of getRows(result)">
+      <article class="card-tile" *ngFor="let row of getVisibleRows(result)">
         <div class="card-media" *ngIf="getCardImage(row)">
           <img [src]="getCardImage(row)" [alt]="getCardTitle(row)" />
         </div>
@@ -1343,6 +1412,9 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
           <div class="card-header">
             ${hasDelete ? '<input type="checkbox" [checked]="isSelected(row)" (click)="$event.stopPropagation()" (change)="toggleRow(row, $event.target.checked)" />' : ''}
             <h3 class="card-title">{{ getCardTitle(row) }}</h3>
+            <ui-badge [variant]="getStatusVariant(row)">
+              {{ getStatusLabel(row) }}
+            </ui-badge>
           </div>
           <p class="card-subtitle" *ngIf="getCardSubtitle(row)">
             {{ getCardSubtitle(row) }}
@@ -1368,7 +1440,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let row of getRows(result)" (click)="openDetail(row)">
+          <tr *ngFor="let row of getVisibleRows(result)" (click)="openDetail(row)">
             ${hasDelete ? '<td class="select-cell"><input type="checkbox" [checked]="isSelected(row)" (click)="$event.stopPropagation()" (change)="toggleRow(row, $event.target.checked)" /></td>' : ''}
             <td *ngFor="let column of getColumns(result)">
               <img
@@ -1424,8 +1496,20 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     scssPath,
     `${buildBaseScss()}
 
+.admin-toolbar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-toolbar__meta {
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
 .admin-actions {
   justify-content: space-between;
+  margin-top: 0;
 }
 
 .row-actions {
@@ -2382,11 +2466,11 @@ export class UiCardComponent {
 }
 
 .ui-card {
-  border-radius: 22px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: var(--shadow-card);
-  padding: 30px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  padding: 24px;
   position: relative;
   overflow: hidden;
 }
@@ -2395,9 +2479,9 @@ export class UiCardComponent {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: 6px;
-  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-strong), var(--color-accent));
-  opacity: 0.65;
+  height: 3px;
+  background: linear-gradient(90deg, #1d4ed8, #2563eb);
+  opacity: 0.85;
 }
 
 .ui-card__header {
@@ -2406,19 +2490,20 @@ export class UiCardComponent {
 
 .ui-card__title {
   margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--bg-ink);
+  font-size: 24px;
+  font-weight: 600;
+  color: #0f172a;
   letter-spacing: -0.02em;
+  font-family: "Instrument Serif", Georgia, serif;
 }
 
 .ui-card__subtitle {
   margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--color-muted);
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  color: #64748b;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: "Space Mono", "Courier New", monospace;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
 }
 `
     },
@@ -2477,10 +2562,10 @@ export class UiCardComponent {
   position: sticky;
   top: 24px;
   align-self: flex-start;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: var(--shadow-card);
-  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
   padding: 22px;
   min-width: 220px;
   display: grid;
@@ -2492,7 +2577,7 @@ export class UiCardComponent {
   align-items: center;
   gap: 10px;
   font-weight: 700;
-  color: var(--bg-ink);
+  color: #0f172a;
   font-size: 15px;
 }
 
@@ -2500,8 +2585,8 @@ export class UiCardComponent {
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.25);
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.24);
 }
 
 .ui-menu__group {
@@ -2512,10 +2597,10 @@ export class UiCardComponent {
 .ui-menu__group-title {
   margin: 0;
   font-size: 11px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--color-muted);
-  font-family: "Space Mono", "Courier New", monospace;
+  color: #94a3b8;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
 }
 
 .ui-menu__item {
@@ -2525,8 +2610,8 @@ export class UiCardComponent {
   font-weight: 600;
   color: #1f2937;
   padding: 10px 14px;
-  border-radius: 14px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  border-radius: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
   border: 1px solid transparent;
   white-space: nowrap;
   overflow: hidden;
@@ -2534,14 +2619,15 @@ export class UiCardComponent {
 }
 
 .ui-menu__item:hover {
-  background: var(--color-primary-soft);
+  background: #eff6ff;
   transform: translateX(2px);
+  color: #1d4ed8;
 }
 
 .ui-menu__item.active {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
+  background: #1e293b;
   color: #ffffff;
-  box-shadow: 0 12px 24px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 10px 24px rgba(30, 41, 59, 0.24);
 }
 
 .ui-menu__item.hidden {
@@ -2747,32 +2833,32 @@ export class UiButtonComponent {
 `,
       scss: `
 .ui-button {
-  border: none;
-  border-radius: 999px;
-  padding: 12px 24px;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .ui-button.primary {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-strong));
+  background: #2563eb;
   color: #ffffff;
-  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.24);
 }
 
 .ui-button.ghost {
   background: #ffffff;
-  color: #1f2937;
-  border: 1px solid var(--color-border);
+  color: #334155;
+  border-color: #cbd5e1;
 }
 
 .ui-button.danger {
-  background: linear-gradient(135deg, var(--color-accent-strong), var(--color-accent));
+  background: #dc2626;
   color: #fff;
-  box-shadow: 0 12px 26px rgba(251, 191, 36, 0.25);
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.22);
 }
 
 .ui-button:hover:not(:disabled) {
@@ -2784,6 +2870,141 @@ export class UiButtonComponent {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
+}
+`
+    },
+    {
+      name: 'ui-search',
+      template: `
+import { Component, EventEmitter, Input, Output } from '@angular/core'
+
+@Component({
+  selector: 'ui-search',
+  standalone: true,
+  templateUrl: './ui-search.component.html',
+  styleUrls: ['./ui-search.component.scss']
+})
+export class UiSearchComponent {
+  @Input() value = ''
+  @Input() placeholder = 'Search'
+  @Output() valueChange = new EventEmitter<string>()
+
+  onInput(event: Event) {
+    const target = event.target as HTMLInputElement | null
+    this.valueChange.emit(target?.value ?? '')
+  }
+}
+`,
+      html: `
+<label class="ui-search">
+  <span class="ui-search__icon" aria-hidden="true">⌕</span>
+  <input
+    class="ui-search__input"
+    type="search"
+    [value]="value"
+    [placeholder]="placeholder"
+    (input)="onInput($event)"
+  />
+</label>
+`,
+      scss: `
+:host {
+  display: block;
+  width: 100%;
+}
+
+.ui-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  padding: 0 10px;
+}
+
+.ui-search:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.ui-search__icon {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.ui-search__input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+  color: #0f172a;
+  background: transparent;
+}
+
+.ui-search__input::placeholder {
+  color: #94a3b8;
+}
+`
+    },
+    {
+      name: 'ui-badge',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgClass } from '@angular/common'
+
+@Component({
+  selector: 'ui-badge',
+  standalone: true,
+  imports: [NgClass],
+  templateUrl: './ui-badge.component.html',
+  styleUrls: ['./ui-badge.component.scss']
+})
+export class UiBadgeComponent {
+  @Input() variant: 'success' | 'warning' | 'danger' | 'neutral' = 'neutral'
+}
+`,
+      html: `
+<span class="ui-badge" [ngClass]="variant">
+  <ng-content></ng-content>
+</span>
+`,
+      scss: `
+:host {
+  display: inline-flex;
+}
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ui-badge.neutral {
+  color: #334155;
+  background: #eef2ff;
+}
+
+.ui-badge.success {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.ui-badge.warning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.ui-badge.danger {
+  color: #991b1b;
+  background: #fee2e2;
 }
 `
     },
