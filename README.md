@@ -1,66 +1,53 @@
-# GenerateUI CLI
+# GenerateUI
 
-Generate CRUD screens (List, Create/Edit, Delete), typed API services, and routes from your OpenAPI spec with real Angular code you can own and evolve.
+GenerateUI is a CLI that reads an OpenAPI 3.x spec and generates Angular CRUD screens, typed services, routes, and menu artifacts that you can keep evolving inside your app.
 
-Goal: stop rewriting repetitive CRUD and start with a functional, scalable UI foundation.
+This repository is a monorepo. The published CLI package is `generate-ui-cli`.
 
-![Example ](image.png)
-## What GenerateUI Does
+## What It Generates
 
-Given an `openapi.yaml` (or `.json`), GenerateUI can generate:
+From an `openapi.yaml`, `openapi.yml`, or `openapi.json`, GenerateUI can generate:
 
-- `screens.json` (detected screens/endpoints)
-- one folder per feature/screen
-- typed API services and DTOs
-- plug-and-play routes
-- basic CRUD UI (list + form + delete confirmation)
-- UI states (loading / empty / error)
+- screen schemas in `generate-ui/generated` and `generate-ui/overlays`
+- route metadata in `routes.json`
+- Angular routes in `routes.gen.ts`
+- menu artifacts in `menu.json`, `menu.overrides.json`, and `menu.gen.ts`
+- Angular feature code under `features/generated`
+- a safe customization area under `features/overrides`
 
-GenerateUI is code generation, not runtime rendering.
+The generator writes source code and JSON configuration files. It is not a runtime renderer.
 
-## Before You Start (Quick Checklist)
+## Requirements
 
-You will need:
+- Node.js `>= 18.20.0`
+- an OpenAPI 3.x file
+- an Angular project for Angular output
 
-- Node.js (LTS recommended)
-- A valid OpenAPI v3.x file
-- An Angular project (for Angular generation) > v.15
-- Optional: a design system (Material, PrimeNG, internal DS)
+Incomplete specs reduce generation quality. Missing `operationId`, response schemas, or field types usually lead to weaker results.
 
-Important:
-- Incomplete OpenAPI specs (missing schemas, responses, or types) may limit what can be generated.
-- Some public APIs require query params (e.g. `fields=...`). Make sure your API calls actually work.
+## Install
 
-## Installation
+Global:
 
-### Global install
 ```bash
 npm install -g generate-ui-cli
 ```
 
-### Local install
+Local:
+
 ```bash
 npm install -D generate-ui-cli
 ```
 
-Then run:
+Then check the CLI:
+
 ```bash
 npx generate-ui --help
 ```
 
-## Recommended Workflow
+## Quick Start
 
-GenerateUI default flow is a single command:
-
-1. Read OpenAPI and generate schemas
-2. Generate Angular code
-
-All in:
-- `generate-ui generate`
-
-## Recommended Setup (No Paths in Commands)
-
-Create `generateui-config.json` at the root of your Angular project:
+Create `generateui-config.json` in your Angular project root:
 
 ```json
 {
@@ -73,450 +60,177 @@ Create `generateui-config.json` at the root of your Angular project:
     "autoInject": true
   },
   "views": {
-    "ProductsAdmin": "cards",
-    "getProducts": "list",
-    "CharacterAdmin": "cards"
+    "ProductsAdmin": "cards"
   }
 }
 ```
 
-Note: `list` is treated as table-style rendering.
+Line-by-line explanation:
 
-## Complete Step-by-Step
+```jsonc
+{
+  // Path to the OpenAPI file that GenerateUI will read as the source of truth.
+  "openapi": "openapi.yaml",
 
-1. Configure `generateui-config.json` at the project root.
-   Edit it before generation whenever you want to change `appTitle`, `defaultRoute`, `menu.autoInject`, or `views`.
-2. Run full generation:
+  // Preferred schema output folder. GenerateUI first uses this value from generateui-config.json
+  // when it exists; if no schema/output path is configured, it falls back to its internal resolution logic.
+  "schemas": "src/generate-ui",
+
+  // Folder where Angular feature code will be generated.
+  "features": "src/app/features",
+
+  // Title shown in the injected menu/layout when menu auto-injection is enabled.
+  "appTitle": "Store",
+
+  // Default route to redirect to from the app root. Empty means no explicit default redirect.
+  "defaultRoute": "",
+
+  "menu": {
+    // When true, GenerateUI tries to inject its base menu layout into the Angular app.
+    "autoInject": true
+  },
+
+  "views": {
+    // Sets the preferred default view for this generated screen. Here, ProductsAdmin starts in cards mode.
+    "ProductsAdmin": "cards"
+  }
+}
+```
+
+Run the default flow:
 
 ```bash
 generate-ui generate
 ```
 
-3. Review generated files in `src/generate-ui/overlays`.
-4. If needed, review generated vs override changes:
+This command:
 
-```bash
-generate-ui merge --feature ProductsAdmin
-```
+1. reads the OpenAPI file
+2. creates or updates screen schemas
+3. generates Angular code from those schemas
 
-Advanced commands:
-- `generate-ui schema` -> generate schemas only
-- `generate-ui angular` -> regenerate Angular from existing schemas (`--no-watch` to run once)
+Schema path resolution follows this order:
 
-## 1) Default Full Generation
+1. CLI argument such as `--output` or `--schemas` when the command supports it
+2. `output` or `schemas` from `generateui-config.json`
+3. inferred location based on the configured features path, when applicable
+4. fallback to `src/generate-ui` if the current project has a `src/` folder, otherwise `generate-ui` at the project root
+
+## CLI Commands
+
+Default flow:
 
 ```bash
 generate-ui generate
 ```
 
-What happens after this command:
+Useful options:
 
-- GenerateUI reads your OpenAPI and detects endpoints.
-- It identifies CRUD-like operations (list, get by id, create, update, delete).
-- It maps request/response schemas.
-- If your project has a `src/` folder, GenerateUI creates `src/generate-ui/`.
-- Otherwise it creates `generate-ui/` next to your OpenAPI file.
-- Inside it you get `generated/`, `overlays/`, `screens.json`, `routes.json`, and `routes.gen.ts`.
+- `--openapi <path>`
+- `--output <path>`
+- `--features <path>`
+- `--watch`
+- `--debug`
 
-What you should review now:
-
-- Are all expected screens present?
-- Are screen and route names correct?
-- Are required query params represented?
-- Do the detected fields match your API schemas?
-
-Tip: this is the best moment to adjust naming and structure before generating code.
-
-## 2) Advanced Commands
+Advanced flow:
 
 ```bash
 generate-ui schema
 generate-ui angular
 ```
 
-What they do:
+- `schema` generates screen schemas and menu metadata from OpenAPI
+- `angular` generates Angular code from `overlays/*.screen.json`
+- `angular` watches `*.screen.json` by default
+- `generate-ui angular --no-watch` runs once and exits
 
-- `schema` generates or updates `generated/` and `overlays/` from OpenAPI.
-- `angular` regenerates Angular output from existing overlays.
-- `angular` keeps live sync while editing `*.screen.json` (use `--no-watch` to run once).
-
-For each screen defined in overlays, Angular generation creates:
-  - a feature folder
-  - list and form components (create/edit)
-  - a typed API service
-  - DTO/types files
-  - route definitions
-  - `menu.json` and `menu.gen.ts` (if present in `generate-ui/`)
-
-Generated/overrides folders:
-
-- `features/generated/` → generated code (always overwritten)
-- `features/overrides/` → your custom edits (never overwritten)
-
-Routes prefer `overrides/` when a matching file exists.
-
-Tip: when you regenerate and want to see what changed, compare files with:
-
-```bash
-diff -u features/generated/<Feature>/<Feature>.component.ts \
-  features/overrides/<Feature>/<Feature>.component.ts
-```
-
-Interactive merge (pick which changes to keep):
+Merge generated vs customized files:
 
 ```bash
 generate-ui merge --feature ProductsAdmin
 ```
 
-Options:
-
-- `--file component.ts|component.html|component.scss|all`
-- `--tool code|meld|kdiff3|bc` (default: `code`)
-
-What you should review now:
-
-- Are files generated in the correct location?
-- Does the project compile?
-- Are routes correctly generated and importable?
-- Does the basic UI work end-to-end?
-
-Note:
-If your project uses custom routing, standalone components, or advanced layouts, you may need to adjust how routes are plugged in.
-
-Defaults (for advanced commands):
-- `--schemas` defaults to the last generated path (stored in `~/.generateui/config.json`), otherwise `./src/generate-ui` (or `./generate-ui`)
-- `--features` defaults to `./src/app/features`
-- Generated files are placed under `features/generated/` and your manual edits go in `features/overrides/`
-
-## Smart admin screens (Dev plan)
-
-When you are logged in and Dev features are enabled, GenerateUI creates **one Admin screen per entity** when it finds a collection GET endpoint.
-
-Example:
-
-- `GET /products` → `ProductsAdmin`
-- `GET /users` → `UsersAdmin`
-
-If the API also includes:
-
-- `GET /entity/{id}` → the Admin list links to a Detail screen
-- `PUT/PATCH /entity/{id}` → the Admin list links to Edit
-- `DELETE /entity/{id}` → Delete actions with confirmation modal
-
-The Admin list is generated in addition to the basic screens (list, get by id, create, update, delete). It is never a replacement.
-
-### generateui-config.json
-
-GenerateUI creates a `generateui-config.json` at your project root on first `generate`. You can edit it to:
-
-- inject a sidebar menu layout automatically (when `menu.autoInject` is not `false`)
-- add a default redirect for `/` using `defaultRoute`
-- show a custom app title in the menu (`appTitle`)
-
-Example:
-
-```json
-{
-  "openapi": "openapi.yaml",
-  "schemas": "src/generate-ui",
-  "features": "src/app/features",
-  "appTitle": "Store",
-  "defaultRoute": "",
-  "menu": {
-    "autoInject": true
-  },
-  "views": {
-    "ProductsAdmin": "cards",
-    "getProducts": "list",
-    "CharacterAdmin": "cards"
-  }
-}
-```
-
-Notes:
-- If `menu.autoInject` is `false`, the menu layout is not injected.
-- `defaultRoute` must match a path in `routes.gen.ts` (the same path used by the router).
-- You can provide either the final route path or an `operationId`; the generator normalizes it to the correct path.
-- You can override the menu by adding `menu.overrides.json` inside your `generate-ui/` folder (it replaces the generated menu entirely).
-- You can choose a default list view per screen (table vs cards) by adding a `views` map:
-
-```json
-{
-  "views": {
-    "ProductsAdmin": "cards",
-    "GetProducts": "table"
-  }
-}
-```
-
-Example `menu.overrides.json`:
-
-```json
-{
-  "groups": [
-    {
-      "id": "cadastros",
-      "label": "Cadastros",
-      "items": [
-        { "id": "GetCharacter", "label": "Personagens", "route": "getCharacter" },
-        { "id": "GetLocation", "label": "Localizações", "route": "getLocation" }
-      ]
-    }
-  ],
-  "ungrouped": [
-    { "id": "GetEpisode", "label": "Episódios", "route": "getEpisode" }
-  ]
-}
-```
-
-
-## Login (Dev plan)
+Optional authentication flow for licensed/dev features:
 
 ```bash
 generate-ui login
 ```
 
-What happens after this command:
+## Generated Structure
 
-- You authenticate your device to unlock Dev features.
-- Dev features include safe regeneration, UI overrides, and unlimited generations.
+Typical output:
+
+```txt
+src/generate-ui/
+  generated/
+  overlays/
+  menu.json
+  menu.overrides.json
+  menu.gen.ts
+  routes.json
+  routes.gen.ts
+src/app/features/
+  generated/
+  overrides/
+```
+
+Behavior:
+
+- `generated/` is regenerated
+- `overlays/` is the editable source for screen-level customization
+- `features/generated/` is regenerated
+- `features/overrides/` is preserved for manual changes
+
+On the first Angular generation, the CLI can seed `features/overrides/` from generated output to start the customization flow.
+
+## Customization
+
+Main customization points:
+
+- edit `generate-ui/overlays/*.screen.json` for labels, fields, layout hints, and table/card behavior
+- edit `generate-ui/menu.overrides.json` for menu labels, groups, and order
+- edit `generateui-config.json` for `appTitle`, `defaultRoute`, `menu.autoInject`, and per-screen `views`
+
+Supported view values currently include table/list-style output and cards. In practice, `list` is treated as table-style rendering.
+
+When `defaultRoute` is configured, the Angular step attempts to inject that redirect into the app routes. When `menu.autoInject` is not `false`, the Angular step also attempts to inject the base menu layout/styles into the host app.
+
+## Safe Regeneration Workflow
+
+Recommended flow:
+
+1. update the OpenAPI spec
+2. run `generate-ui generate`
+3. review `src/generate-ui/overlays`
+4. review generated Angular output
+5. compare customized files with `generate-ui merge --feature <Feature>`
+
+This is the intended split:
+
+- change generation inputs in `overlays/`
+- keep hand-edited Angular code in `features/overrides/`
+- expect `features/generated/` to be overwritten
 
 ## Telemetry
 
-GenerateUI collects anonymous usage data such as CLI version, OS, and executed commands to improve the product.
-No source code or OpenAPI content is ever sent.
-Telemetry can be disabled by setting `telemetry=false` in `~/.generateui/config.json` or by running with `--no-telemetry`.
+The CLI includes telemetry hooks for install and command usage. The global flag `--no-telemetry` disables telemetry for a command run.
 
-## Plugging Routes into Your App
+User config is also stored under `~/.generateui/`.
 
-GenerateUI usually creates route files such as:
+## Local Development
 
-- `src/generate-ui/routes.gen.ts` or `frontend/src/generate-ui/routes.gen.ts` or `generate-ui/routes.gen.ts`
+Repository structure:
 
-Example (Angular Router):
+- `apps/cli`: published CLI package
+- `apps/web-auth`: web auth app
+- `packages/shared`: shared code placeholder
 
-```ts
-import { generatedRoutes } from '../generate-ui/routes.gen';
-
-export const routes = [
-  // ...your existing routes
-  ...generatedRoutes
-];
-```
-
-Things to pay attention to:
-
-- route prefixes (`/admin`, `/app`, etc.)
-- authentication guards
-- layout components (`<router-outlet>` placement)
-
-## Angular >= 15 (standalone) setup
-
-Step-by-step:
-
-1) Generate files:
+Root scripts:
 
 ```bash
-generate-ui generate
-generate-ui angular
+npm run build:cli
 ```
-
-2) Import generated routes in `src/app/app.routes.ts`:
-
-```ts
-import { generatedRoutes } from '../generate-ui/routes.gen'
-
-export const routes: Routes = [
-  // your existing routes
-  ...generatedRoutes
-]
-```
-
-3) Ensure `provideRouter` is used in `src/main.ts`:
-
-```ts
-import { provideRouter } from '@angular/router'
-import { routes } from './app/app.routes'
-
-bootstrapApplication(AppComponent, {
-  providers: [provideRouter(routes)]
-})
-```
-
-4) Check `@angular/router` is installed:
-
-```bash
-npm ls @angular/router
-```
-
-## Example Generated Structure
-
-```txt
-src/generate-ui/ or frontend/src/generate-ui/ or generate-ui/
-  generated/
-  overlays/
-  routes.json
-  routes.gen.ts
-  screens.json
-frontend/src/app/features/
-  users/
-    users.component.ts
-    users.service.gen.ts
-    users.gen.ts
-  orders/
-    orders.component.ts
-    orders.service.gen.ts
-    orders.gen.ts
-```
-
-## After Generation: How to Customize Safely
-
-GenerateUI gives you a working baseline. From here, you typically:
-
-- Customize UI (design system components, masks, validators)
-- Add business logic (conditional fields, permissions)
-- Improve UX (pagination, filtering, empty/error states)
-
-Rule of thumb: the generated code is yours — generate once, then evolve freely.
-
-## Overrides and Regeneration Behavior
-
-You can edit files inside `overlays/` to customize labels, placeholders, hints, and other details. When your API changes and you regenerate, GenerateUI updates what is safe to change from the OpenAPI, but preserves what you defined in `overlays/` to avoid breaking your flow.
-
-Even after the Angular TypeScript files are generated, changes you make in `overlays/` will be mirrored the next time you regenerate.
-
-You can also set response rendering directly in each `*.screen.json` using `response.format`:
-- `table` (default for screens with response data)
-- `cards`
-- `raw`
-
-For table screens, `data.table.columns` is generated with all detected response columns. You can edit:
-- `label` to rename the column header
-- `visible` to hide/show the column
-
-Example:
-
-```json
-{
-  "data": {
-    "table": {
-      "columns": [
-        { "key": "name", "label": "Nome", "visible": true },
-        { "key": "createdAt", "label": "Criado em", "visible": true },
-        { "key": "internalId", "label": "ID Interno", "visible": false }
-      ]
-    }
-  }
-}
-```
-
-
-### Theme / colors / fonts (quick change)
-
-The generated UI uses CSS variables. To update the entire app theme at once, edit your app's root `styles.css`:
-
-```css
-:root {
-  --bg-page: #f7f3ef;
-  --bg-surface: #ffffff;
-  --bg-ink: #0f172a;
-  --color-text: #111827;
-  --color-muted: #6b7280;
-  --color-primary: #0f766e;
-  --color-primary-strong: #0891b2;
-  --color-accent: #f97316;
-  --shadow-card: 0 24px 60px rgba(15, 23, 42, 0.12);
-}
-```
-
-Changing these variables updates buttons, cards, menu, inputs, and backgrounds across the app.
-
-#### Fonts
-
-Fonts are defined in `styles.css` as well. You can:
-
-- swap the Google Fonts import at the top, and
-- update the `font-family` on `body`.
-
-Example:
-
-```css
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
-
-body {
-  font-family: "Manrope", "Helvetica Neue", Arial, sans-serif;
-}
-```
-
-## Common Issues and Fixes
-
-### "Missing OpenAPI file"
-
-`generate-ui generate` did not find `openapi` in `generateui-config.json`.
-
-Fix:
-```bash
-# configure "openapi" in generateui-config.json and run again
-generate-ui generate
-```
-
-### "An endpoint exists but no screen was generated"
-
-This may happen if:
-
-- `operationId` is missing
-- request/response schemas are empty
-- required response codes (`200`, `201`) are missing
-
-Recommendation:
-
-- always define `operationId`
-- include schemas in responses
-
-### "Routes were generated but navigation does not work"
-
-Usually a routing integration issue.
-
-Check:
-
-- if `GENERATED_ROUTES` is imported/spread
-- if route prefixes match your menu
-- if there is a `<router-outlet>` in your layout
-
-## Team Workflow Recommendation
-
-1. Update OpenAPI
-2. Generate `screens.json`
-3. Review `screens.json`
-4. Generate Angular code
-5. Customize UI and business rules
-6. Commit
-
-## Tips for Better Results
-
-- Use consistent `operationId`s (`users_list`, `users_create`, etc.)
-- Define complete schemas (types, required, enums)
-- Standardize responses (`200`, `201`, `204`)
-- Document important query params (pagination, filters)
-- If your API requires `fields=...`, reflect it in `screens.json`
-
-## Roadmap (Example)
-
-- [ ] Layout presets (minimal / enterprise / dashboard)
-- [ ] Design system adapters (Material / PrimeNG / custom)
-- [ ] Filters and real pagination
-- [ ] React support
-
-## Contributing
-
-Issues and PRs are welcome.
-If you use GenerateUI in a company or real project, let us know — it helps guide the roadmap.
 
 ## License
 
 MIT
-
-## Local Files
-
-- `~/.generateui/device.json`
-- `~/.generateui/token.json`

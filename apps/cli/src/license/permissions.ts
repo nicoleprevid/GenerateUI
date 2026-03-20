@@ -1,8 +1,8 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { loadToken, tokenFileExists } from './token'
-import { getApiBaseUrl } from '../runtime/config'
+import { getTokenState, loadToken, tokenFileExists } from './token'
+import { getApiBaseUrl, getDevPlanUrl, getWebAuthUrl } from '../runtime/config'
 
 export interface Features {
   intelligentGeneration: boolean
@@ -12,8 +12,11 @@ export interface Features {
 }
 
 export interface PermissionResponse {
-  plan: 'free' | 'dev'
   features: Features
+  subscription: {
+    status: string
+    reason?: string | null
+  }
 }
 
 interface PermissionCache extends PermissionResponse {
@@ -26,12 +29,15 @@ const PERMISSIONS_PATH = path.join(CONFIG_DIR, 'permissions.json')
 const DEV_OFFLINE_DAYS = 7
 
 const FREE_DEFAULT: PermissionResponse = {
-  plan: 'free',
   features: {
     intelligentGeneration: false,
     safeRegeneration: false,
     uiOverrides: false,
-    maxGenerations: 1
+    maxGenerations: -1
+  },
+  subscription: {
+    status: 'anonymous',
+    reason: 'Login required to unlock paid features.'
   }
 }
 
@@ -45,7 +51,7 @@ function readCache(): PermissionCache | null {
     const parsed = JSON.parse(
       fs.readFileSync(PERMISSIONS_PATH, 'utf-8')
     ) as PermissionCache
-    if (!parsed.plan || !parsed.features) return null
+    if (!parsed.features || !parsed.subscription?.status) return null
     return parsed
   } catch {
     return null
@@ -72,10 +78,7 @@ export async function fetchPermissions(): Promise<PermissionResponse> {
   const apiBase = getApiBaseUrl()
   const token = loadToken()
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-
+  const headers: Record<string, string> = {}
   if (token?.accessToken) {
     headers.Authorization = `Bearer ${token.accessToken}`
   }
@@ -89,9 +92,57 @@ export async function fetchPermissions(): Promise<PermissionResponse> {
     throw new Error('Failed to fetch permissions')
   }
 
-  const data = (await response.json()) as PermissionResponse
+  const raw = (await response.json()) as any
+  const data = normalizePermissions(raw)
   writeCache(data)
   return data
+}
+
+function normalizePermissions(raw: any): PermissionResponse {
+  const features = normalizeFeatures(raw?.features)
+  const subscription = normalizeSubscription(raw)
+  return { features, subscription }
+}
+
+function normalizeFeatures(raw: any): Features {
+  const fallback = FREE_DEFAULT.features
+  return {
+    intelligentGeneration:
+      typeof raw?.intelligentGeneration === 'boolean'
+        ? raw.intelligentGeneration
+        : fallback.intelligentGeneration,
+    safeRegeneration:
+      typeof raw?.safeRegeneration === 'boolean'
+        ? raw.safeRegeneration
+        : fallback.safeRegeneration,
+    uiOverrides:
+      typeof raw?.uiOverrides === 'boolean'
+        ? raw.uiOverrides
+        : fallback.uiOverrides,
+    maxGenerations:
+      typeof raw?.maxGenerations === 'number'
+        ? raw.maxGenerations
+        : fallback.maxGenerations
+  }
+}
+
+function normalizeSubscription(raw: any) {
+  const source = raw?.subscription ?? {}
+  const status = String(
+    source?.status ??
+      (raw?.plan === 'dev' ? 'active' : 'inactive')
+  )
+  const reasonValue = source?.reason
+  const normalizedStatus = status.toLowerCase()
+  return {
+    status,
+    reason:
+      typeof reasonValue === 'string' && reasonValue.trim().length
+        ? reasonValue
+        : normalizedStatus === 'active'
+          ? null
+          : `Assinatura inativa. Faça upgrade para o plano Dev: ${getDevPlanUrl()}`
+  }
 }
 
 function cacheIsValid(cache: PermissionCache) {
@@ -105,15 +156,28 @@ export async function getPermissions(): Promise<PermissionResponse> {
     return await fetchPermissions()
   } catch {
     const tokenPresent = tokenFileExists()
+    const tokenState = getTokenState()
     const cache = readCache()
     if (cache && cacheIsValid(cache)) {
-      return { plan: cache.plan, features: cache.features }
+      return {
+        features: cache.features,
+        subscription: cache.subscription
+      }
     }
 
     // If the user is logged in but the API is temporarily unavailable,
     // fallback to the last known permissions to avoid blocking generation.
     if (tokenPresent && cache) {
-      return { plan: cache.plan, features: cache.features }
+      return {
+        features: cache.features,
+        subscription: cache.subscription
+      }
+    }
+
+    if (tokenState === 'expired') {
+      throw new Error(
+        `Sua sessão expirou. Faça login novamente: ${getWebAuthUrl()}`
+      )
     }
 
     if (tokenPresent) {

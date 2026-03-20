@@ -15,3 +15,7 @@ export function getWebAuthUrl() {
     'https://generateuibackend-production.up.railway.app'
   )
 }
+
+export function getDevPlanUrl() {
+  return 'https://generate-ui.com/plan/dev'
+}

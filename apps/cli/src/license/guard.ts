@@ -1,4 +1,5 @@
 import { Features } from './permissions'
+import { getDevPlanUrl } from '../runtime/config'
 
 export function requireFeature(
   features: Features,
@@ -8,7 +9,7 @@ export function requireFeature(
   if (!features[featureKey]) {
     const details = reason ? ` ${reason}` : ''
     throw new Error(
-      `Requires Dev plan.${details} Execute \`generate-ui login\` to continue.`
+      `This feature requires an active paid subscription.${details} Upgrade: ${getDevPlanUrl()}`
     )
   }
 }

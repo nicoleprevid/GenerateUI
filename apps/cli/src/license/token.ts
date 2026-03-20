@@ -40,6 +40,22 @@ export function loadToken(): AccessToken | null {
   }
 }
 
+export function getTokenState(): 'missing' | 'invalid' | 'expired' | 'valid' {
+  if (!tokenFileExists()) return 'missing'
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(TOKEN_PATH, 'utf-8')
+    ) as AccessToken
+    if (!parsed?.accessToken || !parsed?.expiresAt) return 'invalid'
+    const expiresAt = normalizeExpiresAt(parsed.expiresAt)
+    if (!expiresAt) return 'invalid'
+    if (expiresAt <= Date.now()) return 'expired'
+    return 'valid'
+  } catch {
+    return 'invalid'
+  }
+}
+
 function normalizeExpiresAt(value: string) {
   const trimmed = String(value).trim()
   if (!trimmed.length) return null

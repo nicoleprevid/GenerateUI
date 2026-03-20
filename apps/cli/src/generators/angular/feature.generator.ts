@@ -874,6 +874,10 @@ export function generateAdminFeature(
     featureDir,
     path.join(appRoot, 'ui', 'ui-badge', 'ui-badge.component')
   )
+  const uiStatCardImport = buildRelativeImportPath(
+    featureDir,
+    path.join(appRoot, 'ui', 'ui-stat-card', 'ui-stat-card.component')
+  )
   const schemaImportPath = buildSchemaImportPath(
     featureDir,
     schemasRoot,
@@ -893,6 +897,7 @@ import { UiTextareaComponent } from '${uiTextareaImport}'
 import { UiSelectComponent } from '${uiSelectImport}'
 import { UiSearchComponent } from '${uiSearchImport}'
 import { UiBadgeComponent } from '${uiBadgeImport}'
+import { UiStatCardComponent } from '${uiStatCardImport}'
 import { ${listName}Service } from '${listServicePath}'
 ${hasDelete ? `import { ${deleteName}Service } from '${deleteServicePath}'` : ''}
 import { BehaviorSubject, forkJoin } from 'rxjs'
@@ -911,7 +916,8 @@ import screenSchema from '${schemaImportPath}'
     UiInputComponent,
     UiTextareaComponent,
     UiSearchComponent,
-    UiBadgeComponent
+    UiBadgeComponent,
+    UiStatCardComponent
   ],
   templateUrl: './${fileBase}.component.html',
   styleUrls: ['./${fileBase}.component.scss']
@@ -1264,11 +1270,7 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getStatusVariant(row: any): 'success' | 'warning' | 'danger' | 'neutral' {
-    const raw =
-      row?.status ??
-      row?.availabilityStatus ??
-      row?.state ??
-      row?.stockStatus
+    const raw = this.getStatusValue(row)
     const value = String(raw ?? '').toLowerCase()
     if (/active|ok|success|instock|available/.test(value)) return 'success'
     if (/warning|low|pending|draft/.test(value)) return 'warning'
@@ -1277,14 +1279,145 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
   }
 
   getStatusLabel(row: any) {
-    const raw =
-      row?.status ??
-      row?.availabilityStatus ??
-      row?.state ??
-      row?.stockStatus
+    const raw = this.getStatusValue(row)
     if (raw === null || raw === undefined || raw === '') return 'Unknown'
     return this.formatValue(raw)
   }
+
+  getStatusValue(row: any, key?: string) {
+    if (key && row && typeof row === 'object') {
+      return row[key]
+    }
+    return (
+      row?.status ??
+      row?.paymentStatus ??
+      row?.availabilityStatus ??
+      row?.state ??
+      row?.stockStatus ??
+      row?.result
+    )
+  }
+
+  isStatusColumn(column: string) {
+    return /status|state|availability/i.test(column)
+  }
+
+  isIdColumn(column: string) {
+    return /(^id$)|(_id$)|(Id$)/.test(column)
+  }
+
+  isMethodColumn(column: string) {
+    return /method|paymentMethod/i.test(column)
+  }
+
+  isDateColumn(column: string) {
+    return /date|createdAt|updatedAt|timestamp/i.test(column)
+  }
+
+  formatMethod(value: any) {
+    const raw = String(value ?? '')
+    if (!raw) return ''
+    const labels: Record<string, string> = {
+      credit_card: 'Cartão de Crédito',
+      bank_transfer: 'Transferência Bancária',
+      pix: 'PIX'
+    }
+    return labels[raw] ?? this.formatValue(raw)
+  }
+
+  formatDateValue(value: any) {
+    if (!value) return ''
+    const date = new Date(String(value))
+    if (Number.isNaN(date.getTime())) return this.formatValue(value)
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  formatCurrency(value: number) {
+    try {
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(value)
+    } catch {
+      return 'R$ ' + value.toFixed(2)
+    }
+  }
+
+  getStatusKey(raw?: any) {
+    const configured = this.getConfiguredColumns().map(column => column.key)
+    const candidates = configured.length
+      ? configured
+      : this.getColumns(raw)
+    const match = candidates.find(column => this.isStatusColumn(column))
+    return match ?? ''
+  }
+
+  getStatusLabelValue(value: string) {
+    const normalized = value.toLowerCase()
+    const labels: Record<string, string> = {
+      completed: 'Concluído',
+      pending: 'Pendente',
+      failed: 'Falhou',
+      active: 'Ativo',
+      inactive: 'Inativo'
+    }
+    if (labels[normalized]) return labels[normalized]
+    return value
+      .replace(/[_-]/g, ' ')
+      .replace(/\\b\\w/g, char => char.toUpperCase())
+  }
+
+  getStatusSummary(raw?: any) {
+    const rows = this.getVisibleRows(raw)
+    if (!rows.length) return []
+    const key = this.getStatusKey(raw)
+    if (!key) return []
+
+    const buckets = new Map<
+      string,
+      { key: string; label: string; variant: 'success' | 'warning' | 'danger' | 'neutral'; count: number; total: number }
+    >()
+
+    for (const row of rows) {
+      const rawValue = this.getStatusValue(row, key)
+      if (rawValue === null || rawValue === undefined || rawValue === '') {
+        continue
+      }
+      const value = String(rawValue)
+      const normalized = value.toLowerCase()
+      const current = buckets.get(normalized) ?? {
+        key: normalized,
+        label: this.getStatusLabelValue(value),
+        variant: this.getStatusVariant({ [key]: normalized }),
+        count: 0,
+        total: 0
+      }
+      current.count += 1
+      current.total += this.getAmountValue(row)
+      buckets.set(normalized, current)
+    }
+
+    return Array.from(buckets.values()).sort(
+      (a, b) => b.count - a.count
+    )
+  }
+
+  getAmountValue(row: any) {
+    const candidates = ['amount', 'total', 'price', 'value', 'paidAmount']
+    for (const key of candidates) {
+      const raw = row?.[key]
+      const num = Number(raw)
+      if (Number.isFinite(num)) return num
+    }
+    return 0
+  }
+
 
   private unwrapResult(value: any) {
     if (!value || typeof value !== 'object') return value
@@ -1368,24 +1501,44 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     htmlPath,
     `
 <div class="page">
-  <ui-card title="${escapeAttr(title)}" subtitle="${escapeAttr(subtitle)}">
+  <div class="admin-header">
+    <div>
+      <div class="admin-title">
+        <span class="admin-icon"></span>
+        <span>${escapeAttr(title)}</span>
+      </div>
+      <div class="admin-subtitle">${escapeAttr(subtitle)}</div>
+    </div>
+    <div class="admin-actions">
+      <ui-button variant="ghost" (click)="refresh()">Atualizar</ui-button>
+      ${hasDelete ? '<ui-button variant="danger" [disabled]="!selected.size" (click)="confirmBulkDelete()">Excluir selecionados</ui-button>' : ''}
+    </div>
+  </div>
+
+  <div class="admin-summary" *ngIf="getStatusSummary(result$ | async).length">
+    <ui-stat-card
+      *ngFor="let item of getStatusSummary(result$ | async)"
+      [title]="item.label"
+      [value]="item.total > 0 ? formatCurrency(item.total) : (item.count + '')"
+      [meta]="item.count + ' registros'"
+    >
+      <span class="stat-icon" [class.success]="item.variant === 'success'" [class.warning]="item.variant === 'warning'" [class.danger]="item.variant === 'danger'"></span>
+    </ui-stat-card>
+  </div>
+
+  <ui-card>
     <div class="admin-toolbar">
       <ui-search
         [value]="searchTerm"
-        [placeholder]="'Search records...'"
+        [placeholder]="'Buscar...'"
         (valueChange)="onSearch($event)"
       ></ui-search>
       <div class="admin-toolbar__meta">
         <ui-badge variant="neutral">
-          {{ getVisibleRows(result$ | async).length }} records
+          {{ getVisibleRows(result$ | async).length }} registros
         </ui-badge>
       </div>
     </div>
-    <div class="actions admin-actions">
-      <ui-button variant="ghost" (click)="refresh()">Refresh</ui-button>
-      ${hasDelete ? '<ui-button variant="danger" [disabled]="!selected.size" (click)="confirmBulkDelete()">Delete selected</ui-button>' : ''}
-    </div>
-  </ui-card>
 
   <ng-container *ngIf="error$ | async as error">
     <div class="result-error" *ngIf="error">
@@ -1449,9 +1602,25 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
                 [alt]="formatHeader(column)"
                 class="cell-image"
               />
-              <span *ngIf="!isImageCell(row, column)">
-                {{ getCellValue(row, column) }}
-              </span>
+              <ng-container *ngIf="!isImageCell(row, column)">
+                <span *ngIf="isStatusColumn(column)" class="cell-status">
+                  <ui-badge [variant]="getStatusVariant(row)">
+                    {{ getStatusLabel(row) }}
+                  </ui-badge>
+                </span>
+                <span *ngIf="isIdColumn(column) && !isStatusColumn(column)" class="code-pill">
+                  {{ getCellValue(row, column) }}
+                </span>
+                <span *ngIf="isMethodColumn(column) && !isStatusColumn(column) && !isIdColumn(column)">
+                  {{ formatMethod(getCellValue(row, column)) }}
+                </span>
+                <span *ngIf="isDateColumn(column) && !isStatusColumn(column) && !isIdColumn(column) && !isMethodColumn(column)">
+                  {{ formatDateValue(getCellValue(row, column)) }}
+                </span>
+                <span *ngIf="!isStatusColumn(column) && !isIdColumn(column) && !isMethodColumn(column) && !isDateColumn(column)">
+                  {{ getCellValue(row, column) }}
+                </span>
+              </ng-container>
             </td>
             ${hasDetail || hasEdit || hasDelete ? `<td class="actions-cell">
               <div class="row-actions" (click)="$event.stopPropagation()">
@@ -1473,6 +1642,8 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
     </details>
     ` : ''}
   </ng-container>
+
+  </ui-card>
 
   <div class="confirm-backdrop" *ngIf="confirmIds.length">
     <div class="confirm-modal">
@@ -1508,8 +1679,80 @@ export class ${name}Component implements OnInit, AfterViewInit, OnDestroy {
 }
 
 .admin-actions {
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: 10px;
   margin-top: 0;
+}
+
+.admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bg-ink);
+}
+
+.admin-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  box-shadow: 0 8px 20px rgba(114, 157, 191, 0.2);
+  display: inline-block;
+}
+
+.admin-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.admin-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.stat-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.stat-icon.success {
+  background: #34d399;
+}
+
+.stat-icon.warning {
+  background: #fbbf24;
+}
+
+.stat-icon.danger {
+  background: #f87171;
+}
+
+.code-pill {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  font-size: 11px;
+  background: #eef2f7;
+  color: #334155;
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.cell-status {
+  display: inline-flex;
+  align-items: center;
 }
 
 .row-actions {
@@ -2945,6 +3188,76 @@ export class UiSearchComponent {
 
 .ui-search__input::placeholder {
   color: #94a3b8;
+}
+`
+    },
+    {
+      name: 'ui-stat-card',
+      template: `
+import { Component, Input } from '@angular/core'
+import { NgIf } from '@angular/common'
+
+@Component({
+  selector: 'ui-stat-card',
+  standalone: true,
+  imports: [NgIf],
+  templateUrl: './ui-stat-card.component.html',
+  styleUrls: ['./ui-stat-card.component.scss']
+})
+export class UiStatCardComponent {
+  @Input() title = ''
+  @Input() value = ''
+  @Input() meta = ''
+}
+`,
+      html: `
+<section class="ui-stat-card">
+  <div class="ui-stat-card__top">
+    <div class="ui-stat-card__title">{{ title }}</div>
+    <div class="ui-stat-card__icon">
+      <ng-content></ng-content>
+    </div>
+  </div>
+  <div class="ui-stat-card__value">{{ value }}</div>
+  <div class="ui-stat-card__meta" *ngIf="meta">{{ meta }}</div>
+</section>
+`,
+      scss: `
+:host {
+  display: block;
+}
+
+.ui-stat-card {
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 8px;
+}
+
+.ui-stat-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ui-stat-card__title {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.ui-stat-card__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bg-ink);
+}
+
+.ui-stat-card__meta {
+  font-size: 11px;
+  color: var(--color-muted);
 }
 `
     },

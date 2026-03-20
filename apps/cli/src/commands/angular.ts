@@ -24,13 +24,18 @@ export async function angular(options: {
   void trackCommand('angular', options.telemetryEnabled)
 
   let intelligentEnabled = false
+  let subscriptionReason = ''
   try {
     const permissions = await getPermissions()
     intelligentEnabled = Boolean(
       permissions.features.intelligentGeneration
     )
+    subscriptionReason = String(
+      permissions.subscription.reason ?? ''
+    ).trim()
   } catch {
     intelligentEnabled = false
+    subscriptionReason = ''
   }
 
   const projectConfig = findProjectConfig(process.cwd())
@@ -77,7 +82,8 @@ export async function angular(options: {
     generatedFeaturesRoot,
     overridesFeaturesRoot,
     schemasRoot,
-    intelligentEnabled
+    intelligentEnabled,
+    subscriptionReason
   })
 
   if (!options.watch) {
@@ -99,7 +105,8 @@ export async function angular(options: {
           generatedFeaturesRoot,
           overridesFeaturesRoot,
           schemasRoot,
-          intelligentEnabled
+          intelligentEnabled,
+          subscriptionReason
         })
       } catch (error) {
         const message =
@@ -133,6 +140,7 @@ async function generateAngularOnce(options: {
   overridesFeaturesRoot: string
   schemasRoot: string
   intelligentEnabled: boolean
+  subscriptionReason?: string
 }) {
   if (!fs.existsSync(options.overlaysDir)) {
     throw new Error(
@@ -209,8 +217,13 @@ async function generateAngularOnce(options: {
     }
     if (schema?.meta?.intelligent?.kind === 'adminList') {
       if (!options.intelligentEnabled) {
+        const reason = String(
+          options.subscriptionReason ?? ''
+        ).trim()
         logTip(
-          'Intelligent generation is disabled. Login required to generate admin list screens.'
+          reason
+            ? `Intelligent generation is disabled: ${reason}`
+            : 'Intelligent generation is disabled. Login and an active subscription are required to generate admin list screens.'
         )
         continue
       }

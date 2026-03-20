@@ -4,7 +4,6 @@ import { loadOpenApi } from '../openapi/load-openapi'
 import { generateScreen } from '../generators/screen.generator'
 import { mergeScreen } from '../generators/screen.merge'
 import { getPermissions } from '../license/permissions'
-import { incrementFreeGeneration, loadDeviceIdentity } from '../license/device'
 import { trackCommand } from '../telemetry'
 import { updateUserConfig } from '../runtime/user-config'
 import { logDebug, logStep, logTip } from '../runtime/logger'
@@ -114,21 +113,14 @@ export async function generate(options: {
   const viewDefaults: Array<{ key: string; view: string }> = []
 
   const permissions = await getPermissions()
-  const device = loadDeviceIdentity()
-  logDebug(
-    `License: maxGenerations=${permissions.features.maxGenerations}, overrides=${permissions.features.uiOverrides}, safeRegen=${permissions.features.safeRegeneration}`
+  const subscriptionReason = normalizeSubscriptionReason(
+    permissions.subscription.reason
   )
-
-  if (
-    permissions.features.maxGenerations > -1 &&
-    device.freeGenerationsUsed >= permissions.features.maxGenerations
-  ) {
-    throw new Error(
-      '🔒 Você já utilizou sua geração gratuita.\n' +
-        'O plano Dev libera gerações ilimitadas, regeneração segura e UI inteligente.\n' +
-        '👉 Execute `generate-ui login` para continuar.\n' +
-        'Se você já fez login e ainda vê esta mensagem, tente novamente com a mesma versão do CLI e verifique a conexão com a API.'
-    )
+  logDebug(
+    `License: status=${permissions.subscription.status}, overrides=${permissions.features.uiOverrides}, safeRegen=${permissions.features.safeRegeneration}, intelligent=${permissions.features.intelligentGeneration}`
+  )
+  if (subscriptionReason) {
+    console.log(`ℹ Subscription: ${subscriptionReason}`)
   }
 
   /**
@@ -425,10 +417,6 @@ export async function generate(options: {
     }
   }
 
-  if (permissions.features.maxGenerations > -1) {
-    incrementFreeGeneration()
-  }
-
   console.log('✔ Routes generated')
   console.log('')
   console.log('🎉 Next steps')
@@ -443,6 +431,12 @@ export async function generate(options: {
   console.log('  6) Edit generateui-config.json to set appTitle/defaultRoute/menu.autoInject/views')
   console.log('')
   logTip('Run with --dev to see detailed logs and file paths.')
+}
+
+function normalizeSubscriptionReason(reason?: string | null) {
+  if (typeof reason !== 'string') return ''
+  const trimmed = reason.trim()
+  return trimmed
 }
 
 function resolveGenerateUiRoot(

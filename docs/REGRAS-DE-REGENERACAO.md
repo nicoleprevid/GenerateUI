@@ -247,3 +247,17 @@ Contrato de substituicao:
 Diretriz de evolucao:
 - Novo elemento compartilhado (ex.: filtro, modal, chip, tabela, toast) deve nascer primeiro como componente `ui-*` em pasta isolada.
 - Evitar logica visual duplicada em `features/generated/*` quando puder virar componente reutilizavel.
+
+## 16) Contrato de autorizacao do CLI
+
+Regra obrigatoria:
+- O CLI envia somente `Authorization: Bearer <token>` para validar sessao/licenca.
+- O CLI nao decide plano localmente.
+- O endpoint `/me` e a fonte de verdade para:
+  - `features.*`
+  - `subscription.status`
+  - `subscription.reason` (mensagem comercial para o usuario)
+
+Comportamento esperado:
+- Se `features.*` vier desabilitado em `/me`, o CLI nao libera a feature, mesmo com token salvo.
+- Mensagens ao usuario devem priorizar `subscription.reason` quando disponivel (ex.: trial expirado, pagamento pendente).
