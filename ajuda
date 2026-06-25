@@ -1,0 +1,9 @@
+node apps/cli/dist/index.js merge --feature ProductsAdmin --file all --tool opendiff
+
+CreateProductComponent -> generate-ui merge --feature CreateProduct --file all
+
+node apps/cli/dist/index.js merge --feature CreateProduct --file all
+
+npm publish (mude a versao antes )
+
+npm install -D generate-ui-cli

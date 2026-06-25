@@ -41,6 +41,19 @@ const FREE_DEFAULT: PermissionResponse = {
   }
 }
 
+const OPEN_ACCESS_DEFAULT: PermissionResponse = {
+  features: {
+    intelligentGeneration: true,
+    safeRegeneration: true,
+    uiOverrides: true,
+    maxGenerations: -1
+  },
+  subscription: {
+    status: 'active',
+    reason: null
+  }
+}
+
 function ensureConfigDir() {
   fs.mkdirSync(CONFIG_DIR, { recursive: true })
 }
@@ -152,40 +165,6 @@ function cacheIsValid(cache: PermissionCache) {
 }
 
 export async function getPermissions(): Promise<PermissionResponse> {
-  try {
-    return await fetchPermissions()
-  } catch {
-    const tokenPresent = tokenFileExists()
-    const tokenState = getTokenState()
-    const cache = readCache()
-    if (cache && cacheIsValid(cache)) {
-      return {
-        features: cache.features,
-        subscription: cache.subscription
-      }
-    }
-
-    // If the user is logged in but the API is temporarily unavailable,
-    // fallback to the last known permissions to avoid blocking generation.
-    if (tokenPresent && cache) {
-      return {
-        features: cache.features,
-        subscription: cache.subscription
-      }
-    }
-
-    if (tokenState === 'expired') {
-      throw new Error(
-        `Sua sessão expirou. Faça login novamente: ${getWebAuthUrl()}`
-      )
-    }
-
-    if (tokenPresent) {
-      throw new Error(
-        'Login concluído, mas não foi possível validar sua licença agora. Verifique sua conexão com a API e tente novamente.'
-      )
-    }
-
-    return FREE_DEFAULT
-  }
+  // Local open mode: keep all CLI features available without login.
+  return OPEN_ACCESS_DEFAULT
 }
