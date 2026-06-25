@@ -2963,9 +2963,9 @@ export class UiFieldComponent {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
-  color: var(--color-primary-strong);
+  color: var(--color-primary-strong, #1d4ed8);
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -2983,7 +2983,7 @@ export class UiFieldComponent {
   padding: 10px 12px;
   border-radius: 14px;
   background: #ffffff;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
@@ -2997,7 +2997,7 @@ export class UiFieldComponent {
   min-width: 0;
   min-height: 2.9rem;
   border-radius: 16px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
   padding: 0.7rem 0.95rem;
   font-size: 14px;
@@ -3010,15 +3010,15 @@ export class UiFieldComponent {
 
 :host ::ng-deep input:focus,
 :host ::ng-deep textarea:focus {
-  border-color: var(--color-primary-strong);
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
+  border-color: var(--color-primary-strong, #1d4ed8);
+  box-shadow: 0 0 0 4px var(--color-primary-soft, rgba(59, 130, 246, 0.14));
   transform: translateY(-1px);
 }
 
 :host ::ng-deep input.invalid,
 :host ::ng-deep textarea.invalid {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  border-color: var(--color-accent, #0ea5e9);
+  box-shadow: 0 0 0 3px var(--color-accent-soft, rgba(14, 165, 233, 0.14));
 }
 
 :host ::ng-deep input::placeholder,
@@ -3031,10 +3031,10 @@ export class UiFieldComponent {
   height: 22px;
   padding: 0;
   border-radius: 8px;
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--color-border, #d1d5db);
   background: #ffffff;
   box-shadow: 0 8px 18px rgba(99, 102, 241, 0.12);
-  accent-color: var(--color-primary-strong);
+  accent-color: var(--color-primary-strong, #1d4ed8);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -3416,9 +3416,9 @@ export class UiInputComponent {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
-  color: var(--color-primary-strong);
+  color: var(--color-primary-strong, #1d4ed8);
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -3436,7 +3436,7 @@ export class UiInputComponent {
   padding: 10px 12px;
   border-radius: 14px;
   background: #ffffff;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
@@ -3449,7 +3449,7 @@ export class UiInputComponent {
   min-width: 0;
   min-height: 2.9rem;
   border-radius: 14px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
   padding: 0.7rem 0.95rem;
   font-size: 14px;
@@ -3461,14 +3461,14 @@ export class UiInputComponent {
 }
 
 .ui-control__input:focus {
-  border-color: var(--color-primary-strong);
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
+  border-color: var(--color-primary-strong, #1d4ed8);
+  box-shadow: 0 0 0 4px var(--color-primary-soft, rgba(59, 130, 246, 0.14));
   transform: translateY(-1px);
 }
 
 .ui-control__input.invalid {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  border-color: var(--color-accent, #0ea5e9);
+  box-shadow: 0 0 0 3px var(--color-accent-soft, rgba(14, 165, 233, 0.14));
 }
 
 .ui-control__input::placeholder {
@@ -3571,9 +3571,9 @@ export class UiTextareaComponent {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
-  color: var(--color-primary-strong);
+  color: var(--color-primary-strong, #1d4ed8);
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -3591,7 +3591,7 @@ export class UiTextareaComponent {
   padding: 10px 12px;
   border-radius: 14px;
   background: #ffffff;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
@@ -3604,7 +3604,7 @@ export class UiTextareaComponent {
   min-width: 0;
   min-height: 2.9rem;
   border-radius: 14px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
   padding: 0.7rem 0.95rem;
   font-size: 14px;
@@ -3616,14 +3616,14 @@ export class UiTextareaComponent {
 }
 
 .ui-control__input:focus {
-  border-color: var(--color-primary-strong);
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
+  border-color: var(--color-primary-strong, #1d4ed8);
+  box-shadow: 0 0 0 4px var(--color-primary-soft, rgba(59, 130, 246, 0.14));
   transform: translateY(-1px);
 }
 
 .ui-control__input.invalid {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  border-color: var(--color-accent, #0ea5e9);
+  box-shadow: 0 0 0 3px var(--color-accent-soft, rgba(14, 165, 233, 0.14));
 }
 
 .ui-control__input::placeholder {
@@ -3727,9 +3727,9 @@ export class UiSelectComponent {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
-  color: var(--color-primary-strong);
+  color: var(--color-primary-strong, #1d4ed8);
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -3747,7 +3747,7 @@ export class UiSelectComponent {
   padding: 10px 12px;
   border-radius: 14px;
   background: #ffffff;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
@@ -3760,7 +3760,7 @@ export class UiSelectComponent {
   min-width: 0;
   min-height: 2.9rem;
   border-radius: 14px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
   padding: 0.7rem 2.3rem 0.7rem 0.95rem;
   font-size: 14px;
@@ -3777,14 +3777,14 @@ export class UiSelectComponent {
 }
 
 .ui-control__select:focus {
-  border-color: var(--color-primary-strong);
-  box-shadow: 0 0 0 4px var(--color-primary-soft);
+  border-color: var(--color-primary-strong, #1d4ed8);
+  box-shadow: 0 0 0 4px var(--color-primary-soft, rgba(59, 130, 246, 0.14));
   transform: translateY(-1px);
 }
 
 .ui-control__select.invalid {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  border-color: var(--color-accent, #0ea5e9);
+  box-shadow: 0 0 0 3px var(--color-accent-soft, rgba(14, 165, 233, 0.14));
 }
 `
     },
@@ -3880,9 +3880,9 @@ export class UiCheckboxComponent {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   background: #ffffff;
-  color: var(--color-primary-strong);
+  color: var(--color-primary-strong, #1d4ed8);
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -3900,7 +3900,7 @@ export class UiCheckboxComponent {
   padding: 10px 12px;
   border-radius: 14px;
   background: #ffffff;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border, #d1d5db);
   color: #475569;
   font-size: 12px;
   line-height: 1.4;
@@ -3912,10 +3912,10 @@ export class UiCheckboxComponent {
   height: 22px;
   padding: 0;
   border-radius: 8px;
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--color-border, #d1d5db);
   background: #ffffff;
   box-shadow: 0 8px 18px rgba(99, 102, 241, 0.12);
-  accent-color: var(--color-primary-strong);
+  accent-color: var(--color-primary-strong, #1d4ed8);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 `
@@ -3933,14 +3933,7 @@ export class UiCheckboxComponent {
     const htmlPath = path.join(componentDir, `${base}.component.html`)
     const scssPath = path.join(componentDir, `${base}.component.scss`)
 
-    const needsUiFieldUpdate = component.name === 'ui-field'
-    const shouldOverwrite = (filePath: string, marker?: string) => {
-      if (!fs.existsSync(filePath)) return true
-      if (needsUiFieldUpdate) return true
-      if (!marker) return true
-      const existing = fs.readFileSync(filePath, 'utf-8')
-      return !existing.includes(marker)
-    }
+    const shouldWrite = (filePath: string) => !fs.existsSync(filePath)
 
     if (component.name === 'ui-menu') {
       const menuImportPath = schemasRoot
@@ -3969,13 +3962,13 @@ export class UiMenuComponent {
 `
     }
 
-    if (shouldOverwrite(tsPath, 'infoOpen')) {
+    if (shouldWrite(tsPath)) {
       fs.writeFileSync(tsPath, component.template.trimStart())
     }
-    if (shouldOverwrite(htmlPath, 'ui-control__info-panel')) {
+    if (shouldWrite(htmlPath)) {
       fs.writeFileSync(htmlPath, component.html.trimStart())
     }
-    if (shouldOverwrite(scssPath, 'ui-control__info-panel')) {
+    if (shouldWrite(scssPath)) {
       fs.writeFileSync(scssPath, component.scss.trimStart())
     }
   }

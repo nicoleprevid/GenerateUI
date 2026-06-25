@@ -154,6 +154,7 @@ Generated/overrides folders:
 
 - `features/generated/` → generated code (always overwritten)
 - `features/overrides/` → your custom edits (never overwritten)
+- `src/app/ui/` → base UI kit generated once; after that, it is yours to customize
 
 Routes prefer `overrides/` when a matching file exists.
 

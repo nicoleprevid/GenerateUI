@@ -243,6 +243,7 @@ Componentes base atuais (por pasta):
 Contrato de substituicao:
 - O usuario pode trocar implementacao/estilo desses componentes para plugar seu design system.
 - A geracao de features continua referenciando os mesmos seletores (`ui-*`), mantendo compatibilidade.
+- Os arquivos em `src/app/ui` sao gerados apenas na primeira vez; depois disso o CLI nao sobrescreve mais esses componentes automaticamente.
 
 Diretriz de evolucao:
 - Novo elemento compartilhado (ex.: filtro, modal, chip, tabela, toast) deve nascer primeiro como componente `ui-*` em pasta isolada.
