@@ -556,16 +556,18 @@ function applyAppLayout(featuresRoot: string, schemasRoot: string) {
     console.log('')
   }
 
-  if (config?.defaultRoute) {
-    injectDefaultRoute(appRoot, config.defaultRoute)
-  }
-
   ensureBaseStyles(appRoot)
 
   const autoInject = config?.menu?.autoInject !== false
   if (autoInject) {
     const appTitle = config?.appTitle || 'Generate UI'
-    injectMenuLayout(appRoot, appTitle, schemasRoot)
+    injectGeneratedAppShell(appRoot, {
+      appTitle,
+      defaultRoute: config?.defaultRoute,
+      schemasRoot
+    })
+  } else if (config?.defaultRoute) {
+    injectDefaultRoute(appRoot, config.defaultRoute)
   }
 }
 
@@ -649,64 +651,68 @@ function injectDefaultRoute(appRoot: string, value: string) {
   logDebug(`Default route injected (updated): ${routesPath}`)
 }
 
-function injectMenuLayout(
+function injectGeneratedAppShell(
   appRoot: string,
-  appTitle: string,
-  schemasRoot: string
+  options: {
+    appTitle: string
+    defaultRoute?: string
+    schemasRoot: string
+  }
 ) {
   const appHtmlPath = path.join(appRoot, 'app.html')
   const appCssPath = path.join(appRoot, 'app.css')
   const appTsPath = path.join(appRoot, 'app.ts')
+  const routesPath = path.join(appRoot, 'app.routes.ts')
 
   if (
     !fs.existsSync(appHtmlPath) ||
     !fs.existsSync(appCssPath) ||
-    !fs.existsSync(appTsPath)
+    !fs.existsSync(appTsPath) ||
+    !fs.existsSync(routesPath)
   ) {
-    logDebug('Skip menu injection: app.html/app.css/app.ts not found')
+    logDebug(
+      'Skip menu injection: app.html/app.css/app.ts/app.routes.ts not found'
+    )
     return
   }
 
   const htmlRaw = fs.readFileSync(appHtmlPath, 'utf-8')
-  if (htmlRaw.includes('<ui-menu')) {
-    let updatedHtml = htmlRaw
-    updatedHtml = updatedHtml.replace(
-      /<ui-menu(?![^>]*\[\s*title\s*\])[\\s>]/,
-      '<ui-menu [title]="appTitle()">'
-    )
-    if (updatedHtml !== htmlRaw) {
-      fs.writeFileSync(appHtmlPath, updatedHtml)
-      logDebug(`Updated ui-menu title binding: ${appHtmlPath}`)
-    }
-  } else {
-    const normalized = htmlRaw.replace(/\s+/g, '')
-    const isDefaultOutlet =
-      normalized === '<router-outlet></router-outlet>' ||
-      normalized === '<router-outlet/>' ||
-      normalized === '<router-outlet/>'
-
-    if (!isDefaultOutlet) return
-
-    const newHtml = `<div class="app-shell">\n  <ui-menu [title]="appTitle()"></ui-menu>\n  <main class="app-content">\n    <router-outlet></router-outlet>\n  </main>\n</div>\n`
-    fs.writeFileSync(appHtmlPath, newHtml)
-    logDebug(`Injected menu layout into: ${appHtmlPath}`)
-  }
-
   const cssRaw = fs.readFileSync(appCssPath, 'utf-8')
-  if (!cssRaw.includes('.app-shell')) {
-    const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
-    fs.writeFileSync(
-      appCssPath,
-      cssRaw.trim().length ? `${cssRaw.trim()}\n\n${shellCss}` : shellCss
+  let tsRaw = fs.readFileSync(appTsPath, 'utf-8')
+  let routesRaw = fs.readFileSync(routesPath, 'utf-8')
+
+  const shellAlreadyIntegrated =
+    htmlRaw.includes('<ui-menu') ||
+    cssRaw.includes('.app-shell') ||
+    tsRaw.includes('UiMenuComponent') ||
+    routesRaw.includes('generatedRoutes')
+
+  if (shellAlreadyIntegrated) {
+    logDebug(
+      'Skip menu injection: app shell already integrated; preserving user shell.'
     )
-    logDebug(`Injected menu shell styles into: ${appCssPath}`)
+    return
   }
 
-  let tsRaw = fs.readFileSync(appTsPath, 'utf-8')
+  routesRaw = scaffoldRoutes(routesRaw, options.defaultRoute)
+  fs.writeFileSync(routesPath, routesRaw)
+  logDebug(`Injected generated routes into: ${routesPath}`)
+
+  const newHtml = `<div class="app-shell">\n  <ui-menu [title]="appTitle()"></ui-menu>\n  <main class="app-content">\n    <router-outlet></router-outlet>\n  </main>\n</div>\n`
+  fs.writeFileSync(appHtmlPath, newHtml)
+  logDebug(`Injected menu layout into: ${appHtmlPath}`)
+
+  const shellCss = `:host {\n  display: block;\n  min-height: 100vh;\n  color: #0f172a;\n  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);\n}\n\n.app-shell {\n  display: grid;\n  grid-template-columns: 260px 1fr;\n  gap: 24px;\n  padding: 24px;\n  align-items: start;\n}\n\n.app-content {\n  min-width: 0;\n}\n\n@media (max-width: 900px) {\n  .app-shell {\n    grid-template-columns: 1fr;\n  }\n}\n`
+  fs.writeFileSync(
+    appCssPath,
+    cssRaw.trim().length ? `${cssRaw.trim()}\n\n${shellCss}` : shellCss
+  )
+  logDebug(`Injected menu shell styles into: ${appCssPath}`)
+
   if (!tsRaw.includes('UiMenuComponent')) {
     tsRaw = tsRaw.replace(
-      /import\s+\{\s*([^}]+)\s*\}\s+from\s+['"]@angular\/router['"];/,
-      (match) =>
+      /import\s+\{\s*([^}]+)\s*\}\s+from\s+['"]@angular\/router['"];?/,
+      match =>
         `${match}\nimport { UiMenuComponent } from './ui/ui-menu/ui-menu.component';`
     )
   }
@@ -716,18 +722,31 @@ function injectMenuLayout(
       /imports:\s*\[/,
       match => `${match}RouterOutlet, UiMenuComponent, `
     )
-    tsRaw = tsRaw.replace(/UiMenuComponent,\s*UiMenuComponent,\s*/g, 'UiMenuComponent, ')
-    tsRaw = tsRaw.replace(/RouterOutlet,\s*RouterOutlet,\s*/g, 'RouterOutlet, ')
-    tsRaw = tsRaw.replace(/UiMenuComponent,\s*RouterOutlet,\s*UiMenuComponent,/g, 'UiMenuComponent, ')
+    tsRaw = tsRaw.replace(
+      /UiMenuComponent,\s*UiMenuComponent,\s*/g,
+      'UiMenuComponent, '
+    )
+    tsRaw = tsRaw.replace(
+      /RouterOutlet,\s*RouterOutlet,\s*/g,
+      'RouterOutlet, '
+    )
+    tsRaw = tsRaw.replace(
+      /UiMenuComponent,\s*RouterOutlet,\s*UiMenuComponent,/g,
+      'UiMenuComponent, '
+    )
   }
 
   if (tsRaw.includes('appTitle')) {
     tsRaw = tsRaw.replace(
       /appTitle\s*=\s*signal\('([^']*)'\)/,
-      `appTitle = signal('${escapeString(appTitle)}')`
+      `appTitle = signal('${escapeString(options.appTitle)}')`
     )
   } else {
-    if (!tsRaw.match(/import\s+\{\s*[^}]*\bsignal\b[^}]*\}\s+from\s+['"]@angular\/core['"]/)) {
+    if (
+      !tsRaw.match(
+        /import\s+\{\s*[^}]*\bsignal\b[^}]*\}\s+from\s+['"]@angular\/core['"]/
+      )
+    ) {
       tsRaw = tsRaw.replace(
         /import\s+\{\s*([^}]+)\s*\}\s+from\s+['"]@angular\/core['"];?/,
         (match, imports) => {
@@ -740,7 +759,7 @@ function injectMenuLayout(
       /export class App\s*\{\s*/,
       match =>
         `${match}\n  protected readonly appTitle = signal('${escapeString(
-          appTitle
+          options.appTitle
         )}');\n`
     )
   }
@@ -748,7 +767,10 @@ function injectMenuLayout(
   // Remove legacy runtime config loader if present.
   if (tsRaw.includes('loadRuntimeConfig')) {
     tsRaw = tsRaw.replace(/\\s*constructor\\(\\)\\s*\\{[\\s\\S]*?\\}\\s*/m, '\n')
-    tsRaw = tsRaw.replace(/\\s*private\\s+loadRuntimeConfig\\(\\)\\s*\\{[\\s\\S]*?\\}\\s*/m, '\n')
+    tsRaw = tsRaw.replace(
+      /\\s*private\\s+loadRuntimeConfig\\(\\)\\s*\\{[\\s\\S]*?\\}\\s*/m,
+      '\n'
+    )
   }
 
   fs.writeFileSync(appTsPath, tsRaw)
@@ -762,8 +784,74 @@ function injectMenuLayout(
   )
   if (fs.existsSync(menuComponentPath)) {
     // Touch to keep consistent in case it was generated before config title existed.
-    void schemasRoot
+    void options.schemasRoot
   }
+}
+
+function scaffoldRoutes(content: string, defaultRoute?: string) {
+  const route = defaultRoute ? normalizeRoutePath(defaultRoute) : ''
+  const generatedImport =
+    `import { generatedRoutes } from '../generate-ui/routes.gen'\n`
+  const generatedRoutesLine = `  ...generatedRoutes,\n`
+  const redirectLine = route
+    ? `  { path: '', pathMatch: 'full', redirectTo: '${route}' },\n`
+    : ''
+
+  let next = content
+
+  if (
+    !next.match(
+      /import\s+\{\s*generatedRoutes\s*\}\s+from\s+['"].*generate-ui\/routes\.gen['"]/
+    )
+  ) {
+    next = generatedImport + next
+  }
+
+  next = next.replace(
+    /export const routes\s*:\s*Routes\s*=\s*\[\s*\]/,
+    `export const routes: Routes = [\n${redirectLine}${generatedRoutesLine}]`
+  )
+  next = next.replace(
+    /export const routes\s*=\s*\[\s*\]/,
+    `export const routes: Routes = [\n${redirectLine}${generatedRoutesLine}]`
+  )
+
+  if (!next.includes('generatedRoutes')) {
+    return next
+  }
+
+  if (redirectLine && !next.includes("path: '', pathMatch: 'full'")) {
+    next = next.replace(
+      /export const routes\s*:\s*Routes\s*=\s*\[/,
+      match => `${match}\n${redirectLine}${generatedRoutesLine}`
+    )
+  } else if (!next.includes('...generatedRoutes')) {
+    next = next.replace(
+      /export const routes\s*:\s*Routes\s*=\s*\[/,
+      match => `${match}\n${generatedRoutesLine}`
+    )
+  }
+
+  if (!next.includes('...generatedRoutes')) {
+    next = next.replace(
+      /export const routes\s*:\s*Routes\s*=\s*\[/,
+      match => `${match}\n${generatedRoutesLine}`
+    )
+  }
+
+  return next
+}
+
+function injectMenuLayout(
+  appRoot: string,
+  appTitle: string,
+  schemasRoot: string
+) {
+  // Deprecated wrapper kept for compatibility with older internal calls.
+  injectGeneratedAppShell(appRoot, {
+    appTitle,
+    schemasRoot
+  })
 }
 
 function ensureBaseStyles(appRoot: string) {

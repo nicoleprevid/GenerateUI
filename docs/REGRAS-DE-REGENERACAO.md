@@ -94,6 +94,8 @@ Regra base:
 Sincronizacao:
 - Se `overrides` estiver vazio na primeira execucao, ele e semeado a partir de `generated`.
 - Rotas e menu sao regenerados a partir do estado atual dos overlays.
+- Se `menu.autoInject` estiver habilitado, a primeira geracao pode scaffoldar `app.routes.ts`, `app.html`, `app.ts` e `app.css` para integrar o shell da aplicacao.
+- Depois da primeira integracao do shell, o CLI nao sobrescreve mais esses arquivos automaticamente.
 
 ## 6) Watch de overlays
 

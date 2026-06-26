@@ -103,6 +103,8 @@ Advanced commands:
 - `generate-ui schema` -> generate schemas only
 - `generate-ui angular` -> regenerate Angular from existing schemas (`--no-watch` to run once)
 
+When `menu.autoInject` is enabled, the first generation is allowed to scaffold the host app shell (`app.routes.ts`, `app.html`, `app.ts`, `app.css`). After that first integration, GenerateUI preserves those shell files and stops overwriting them automatically.
+
 ## 1) Default Full Generation
 
 ```bash
